@@ -63,12 +63,25 @@ CrisisConnect is a modern, resilient communication platform designed to keep com
    npm install
    ```
 
-3. **Start development server**
+3. **Configure Google Maps API (Optional)**
+   ```bash
+   # Create .env file and add your Google Maps API key
+   echo "VITE_GOOGLE_MAPS_API_KEY=your_api_key_here" > .env
+   ```
+   
+   To get a Google Maps API key:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable the **Maps JavaScript API**
+   - Create credentials (API Key)
+   - Restrict the API key to your domain for security
+
+4. **Start development server**
    ```bash
    npm run dev
    ```
 
-4. **Open your browser**
+5. **Open your browser**
    Navigate to `http://localhost:5173`
 
 ### Available Scripts
