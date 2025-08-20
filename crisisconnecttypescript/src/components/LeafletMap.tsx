@@ -110,7 +110,7 @@ const createAlertIcon = (urgency: string) => {
   });
 };
 
-export default function LeafletMap({ alerts, center = [40.7128, -74.0060], zoom = 10 }: LeafletMapProps) {
+export default function LeafletMap({ alerts, center = [0, 20], zoom = 3 }: LeafletMapProps) {
   return (
     <div className="w-full h-full">
       <MapContainer

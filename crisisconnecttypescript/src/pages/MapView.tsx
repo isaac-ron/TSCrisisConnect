@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
-import { Locate, Layers, Flame, Droplets, Users, Zap } from 'lucide-react';
+import { Locate, Layers, Flame, Droplets, Users, Zap, TreePine, Cross } from 'lucide-react';
 import LeafletMap from '../components/LeafletMap';
 
 export function MapView() {
@@ -61,6 +61,45 @@ export function MapView() {
       timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
       alertType: 'power',
     },
+    {
+      id: '5',
+      type: 'Flash Flood Alert',
+      urgency: 'High',
+      description: 'Heavy rains causing flash floods in Kibera slums. Residents advised to move to higher ground immediately. Emergency shelters being opened.',
+      location: {
+        lat: -1.3133,
+        lng: 36.7950,
+        address: 'Kibera, Nairobi, Kenya'
+      },
+      timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 min ago
+      alertType: 'flood',
+    },
+    {
+      id: '6',
+      type: 'Wildlife Conflict',
+      urgency: 'Medium',
+      description: 'Elephants spotted in farming areas near Maasai Mara. Kenya Wildlife Service teams deployed. Farmers advised to stay indoors and secure crops.',
+      location: {
+        lat: -1.5061,
+        lng: 35.1432,
+        address: 'Maasai Mara, Narok County, Kenya'
+      },
+      timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
+      alertType: 'wildlife',
+    },
+    {
+      id: '7',
+      type: 'Medical Emergency',
+      urgency: 'High',
+      description: 'Cholera outbreak reported in Eastleigh district. 25 confirmed cases. Water sources being tested. Vaccination campaign initiated by Ministry of Health.',
+      location: {
+        lat: -1.2701,
+        lng: 36.8419,
+        address: 'Eastleigh, Nairobi, Kenya'
+      },
+      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
+      alertType: 'medical',
+    },
   ];
 
   return (
@@ -88,8 +127,8 @@ export function MapView() {
       <div className="relative h-96">
         <LeafletMap
           alerts={alertsWithLocations}
-          center={[37.7749, -122.4194]} // San Francisco coordinates
-          zoom={12}
+          center={[0, 20]} // Global view to show both US and Kenya
+          zoom={3}
         />
       </div>
 
@@ -122,6 +161,18 @@ export function MapView() {
               </div>
               <span className="text-sm">Power Outage</span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-green-700 rounded-full flex items-center justify-center">
+                <TreePine className="w-2 h-2 text-white" />
+              </div>
+              <span className="text-sm">Wildlife Conflict</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                <Cross className="w-2 h-2 text-white" />
+              </div>
+              <span className="text-sm">Medical Emergency</span>
+            </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-border">
@@ -129,11 +180,11 @@ export function MapView() {
             <div className="flex gap-4">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-                <span className="text-sm">Urgent</span>
+                <span className="text-sm">High</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                <span className="text-sm">Moderate</span>
+                <span className="text-sm">Medium</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
