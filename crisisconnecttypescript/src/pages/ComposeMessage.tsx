@@ -1,4 +1,6 @@
+import * as React from 'react';
 import { useState } from 'react';
+import { saveOfflineMessage } from '../utils/offlineMessages';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -8,14 +10,53 @@ interface ComposeMessageProps {
   onClose: () => void;
 }
 
+
 export function ComposeMessage({ onClose }: ComposeMessageProps) {
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [status, setStatus] = useState<string | null>(null);
 
-  const handleSend = () => {
+  // Listen for online/offline events
+  React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleSend = async () => {
     if (message.trim() && category) {
-      // Simulate saving message for sync
-      onClose();
+      const msg = {
+        content: message,
+        category,
+      };
+      if (isOnline) {
+        try {
+          await fetch('/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(msg),
+          });
+          await saveOfflineMessage({ ...msg, synced: true });
+          setStatus('Message sent successfully.');
+        } catch {
+          await saveOfflineMessage({ ...msg, synced: false });
+          setStatus('No connection. Message saved for later sync.');
+        }
+      } else {
+        await saveOfflineMessage({ ...msg, synced: false });
+        setStatus('No connection. Message saved for later sync.');
+      }
+      window.dispatchEvent(new Event('messages-updated'));
+      setTimeout(() => {
+        setStatus(null);
+        onClose();
+      }, 1200);
     }
   };
 
@@ -84,19 +125,24 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
           className="w-full h-12 bg-destructive hover:bg-destructive/90 text-destructive-foreground"
           size="lg"
         >
-          Save for Sync
+          {isOnline ? 'Send Message' : 'Save for Sync'}
         </Button>
+        {status && (
+          <div className="mt-2 text-center text-sm text-muted-foreground">{status}</div>
+        )}
       </div>
 
       {/* Offline status banner */}
-      <div className="fixed bottom-16 left-0 right-0 bg-muted border-t border-border p-3">
-        <div className="flex items-center justify-center gap-2">
-          <WifiOff className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            You are offline — message will sync automatically
-          </span>
+      {!isOnline && (
+        <div className="fixed bottom-16 left-0 right-0 bg-muted border-t border-border p-3 z-50">
+          <div className="flex items-center justify-center gap-2">
+            <WifiOff className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              You are offline — message will sync automatically when reconnected.
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

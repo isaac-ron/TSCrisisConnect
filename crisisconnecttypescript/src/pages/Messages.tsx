@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getAllMessages } from '../utils/offlineMessages';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
@@ -7,39 +8,25 @@ import { CheckCircle, Clock, Heart, Home, AlertTriangle } from 'lucide-react';
 export function Messages() {
   const [activeTab, setActiveTab] = useState('sent');
 
-  const sentMessages = [
-    {
-      id: '1',
-      content: 'Need medical assistance at 123 Main St. Person unconscious.',
-      category: 'medical',
-      timestamp: '2 hours ago',
-      synced: true,
-    },
-    {
-      id: '2', 
-      content: 'Building collapsed on Oak Avenue. Multiple people trapped.',
-      category: 'threat',
-      timestamp: '5 hours ago',
-      synced: true,
-    },
-  ];
+  const [sentMessages, setSentMessages] = useState<any[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<any[]>([]);
 
-  const pendingMessages = [
-    {
-      id: '3',
-      content: 'Lost shelter after flood. Need safe place to stay with family of 4.',
-      category: 'shelter', 
-      timestamp: '1 min ago',
-      synced: false,
-    },
-    {
-      id: '4',
-      content: 'Road blocked by fallen trees on Highway 101. Cannot pass.',
-      category: 'threat',
-      timestamp: '5 min ago', 
-      synced: false,
-    },
-  ];
+  // Load messages from IndexedDB
+  useEffect(() => {
+    const loadMessages = async () => {
+      const all = await getAllMessages();
+      setSentMessages(all.filter((m) => m.synced));
+      setPendingMessages(all.filter((m) => !m.synced));
+    };
+    loadMessages();
+    // Listen for online event and custom event to refresh after sync or new message
+    window.addEventListener('online', loadMessages);
+    window.addEventListener('messages-updated', loadMessages);
+    return () => {
+      window.removeEventListener('online', loadMessages);
+      window.removeEventListener('messages-updated', loadMessages);
+    };
+  }, []);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -69,7 +56,7 @@ export function Messages() {
               {message.category}
             </Badge>
           </div>
-          <p className="text-sm leading-relaxed">{message.content}</p>
+          <p className="text-sm leading-relaxed">{message.content || message.message}</p>
         </div>
         <div className="flex items-center gap-1">
           {message.synced ? (
@@ -80,7 +67,9 @@ export function Messages() {
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{message.timestamp}</span>
+        <span className="text-xs text-muted-foreground">
+          {message.timestamp ? message.timestamp : message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}
+        </span>
         <Badge variant={message.synced ? "secondary" : "outline"}>
           {message.synced ? 'Sent' : 'Pending sync'}
         </Badge>
