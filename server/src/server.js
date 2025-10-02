@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import {PrismaClient} from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
 

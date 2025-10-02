@@ -4,6 +4,7 @@ import {Card,CardContent,CardHeader,CardTitle} from "../ui/card";
 import { Badge } from "../ui/badge";
 import {Tabs,TabsContent,TabsList,TabsTrigger} from "../ui/tabs";
 import { Alert, AlertDescription } from "../ui/alert";
+import type { UserProfile } from '../lib/types';
 import {
   Shield,
   LogOut,
@@ -20,6 +21,7 @@ import {
 
 interface FirstResponderDashboardProps {
   onLogout: () => void;
+  user?: UserProfile;
 }
 
 // Mock data for alerts
@@ -108,8 +110,13 @@ const mockMessages = [
 
 export function FirstResponderDashboard({
   onLogout,
+  user,
 }: FirstResponderDashboardProps) {
   const [activeTab, setActiveTab] = useState("overview");
+
+  const responderName = user?.name || "On Duty Responder";
+  const responderBadgeLabel = user?.badgeId ? `Badge: ${user.badgeId}` : undefined;
+  const responderEmail = user?.email;
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -170,8 +177,12 @@ export function FirstResponderDashboard({
             <div>
               <h1 className="text-lg">Emergency Dashboard</h1>
               <p className="text-sm text-muted-foreground">
-                Badge: FR001 • Officer Johnson
+                {responderBadgeLabel ? `${responderBadgeLabel} • ` : ""}
+                {responderName}
               </p>
+              {responderEmail ? (
+                <p className="text-xs text-muted-foreground">{responderEmail}</p>
+              ) : null}
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onLogout}>
