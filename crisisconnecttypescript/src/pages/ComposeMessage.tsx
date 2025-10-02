@@ -35,28 +35,56 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
         content: message,
         category,
       };
+      
+      console.log('🚀 [ComposeMessage] Starting send process...');
+      console.log('📦 [ComposeMessage] Message payload:', msg);
+      console.log('📡 [ComposeMessage] Online status:', isOnline);
+      console.log('🌐 [ComposeMessage] navigator.onLine:', navigator.onLine);
+      
       if (isOnline) {
         try {
-          await fetch('/reports', {
+          console.log('🌐 [ComposeMessage] Attempting POST to /reports...');
+          const response = await fetch('/reports', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(msg),
           });
+          
+          console.log('📥 [ComposeMessage] Response status:', response.status);
+          console.log('📥 [ComposeMessage] Response ok:', response.ok);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ [ComposeMessage] Server error response:', errorText);
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
+          }
+          
+          const result = await response.json();
+          console.log('✅ [ComposeMessage] Server response:', result);
+          
           await saveOfflineMessage({ ...msg, synced: true });
           setStatus('Message sent successfully.');
-        } catch {
+          console.log('✅ [ComposeMessage] Message sent and saved to IndexedDB as synced');
+        } catch (error) {
+          console.error('❌ [ComposeMessage] Fetch error:', error);
+          console.error('❌ [ComposeMessage] Error details:', error instanceof Error ? error.message : 'Unknown error');
           await saveOfflineMessage({ ...msg, synced: false });
           setStatus('No connection. Message saved for later sync.');
+          console.log('💾 [ComposeMessage] Message saved to IndexedDB as unsynced');
         }
       } else {
+        console.log('📴 [ComposeMessage] Offline mode - saving to IndexedDB...');
         await saveOfflineMessage({ ...msg, synced: false });
         setStatus('No connection. Message saved for later sync.');
+        console.log('💾 [ComposeMessage] Message saved to IndexedDB as unsynced');
       }
       window.dispatchEvent(new Event('messages-updated'));
       setTimeout(() => {
         setStatus(null);
         onClose();
       }, 1200);
+    } else {
+      console.warn('⚠️ [ComposeMessage] Cannot send - missing message or category');
     }
   };
 
