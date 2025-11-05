@@ -1,21 +1,37 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { saveOfflineMessage } from '../utils/offlineMessages';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { ArrowLeft, WifiOff, Heart, Home, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, WifiOff, Heart, Home, AlertTriangle, ImagePlus, Flame, Droplets, Mountain, CloudRain, ShieldAlert, Car, Building2, Skull, Zap } from 'lucide-react';
 
 interface ComposeMessageProps {
   onClose: () => void;
 }
 
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Invalid file result.'));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
 
 export function ComposeMessage({ onClose }: ComposeMessageProps) {
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState('');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Listen for online/offline events
   React.useEffect(() => {
@@ -31,9 +47,22 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
 
   const handleSend = async () => {
     if (message.trim() && category) {
+      let attachmentData: string | null = null;
+
+      if (attachment) {
+        try {
+          attachmentData = await readFileAsDataUrl(attachment);
+        } catch (error) {
+          console.error('❌ [ComposeMessage] Attachment read error:', error);
+          setStatus('Could not read the selected image. Please try again.');
+          return;
+        }
+      }
+
       const msg = {
         content: message,
         category,
+        attachment: attachmentData,
       };
       
       console.log('🚀 [ComposeMessage] Starting send process...');
@@ -79,6 +108,10 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
         console.log('💾 [ComposeMessage] Message saved to IndexedDB as unsynced');
       }
       window.dispatchEvent(new Event('messages-updated'));
+      setAttachment(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       setTimeout(() => {
         setStatus(null);
         onClose();
@@ -88,10 +121,51 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
     }
   };
 
+  const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setAttachment(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      console.warn('⚠️ [ComposeMessage] Invalid file type selected');
+      setStatus('Please choose an image file.');
+      event.target.value = '';
+      return;
+    }
+
+    setStatus(null);
+    setAttachment(file);
+  };
+
+  React.useEffect(() => {
+    if (!attachment) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(attachment);
+    setPreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment]);
+
   const categories = [
     { value: 'medical', label: 'Medical Emergency', icon: Heart, color: 'text-red-600' },
+    { value: 'fire', label: 'Fire/Wildfire', icon: Flame, color: 'text-orange-600' },
+    { value: 'flood', label: 'Flood/Water Emergency', icon: Droplets, color: 'text-blue-500' },
+    { value: 'earthquake', label: 'Earthquake', icon: Mountain, color: 'text-amber-700' },
+    { value: 'storm', label: 'Severe Storm/Hurricane', icon: CloudRain, color: 'text-slate-600' },
+    { value: 'violence', label: 'Violence/Active Threat', icon: ShieldAlert, color: 'text-red-700' },
+    { value: 'accident', label: 'Vehicle/Traffic Accident', icon: Car, color: 'text-yellow-600' },
+    { value: 'building', label: 'Building Collapse/Structural', icon: Building2, color: 'text-stone-600' },
+    { value: 'chemical', label: 'Chemical/Gas Leak', icon: Skull, color: 'text-purple-600' },
+    { value: 'power', label: 'Power Outage', icon: Zap, color: 'text-gray-600' },
     { value: 'shelter', label: 'Need Shelter', icon: Home, color: 'text-blue-600' },
-    { value: 'threat', label: 'Safety Threat', icon: AlertTriangle, color: 'text-orange-600' },
+    { value: 'other', label: 'Other Emergency', icon: AlertTriangle, color: 'text-orange-600' },
   ];
 
   return (
@@ -144,6 +218,52 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
           <p className="text-xs text-muted-foreground">
             {message.length}/500 characters
           </p>
+        </div>
+
+        {/* Image attachment */}
+        <div className="space-y-2">
+          <label className="text-sm">Attach Photo (optional)</label>
+          <div className="flex gap-3">
+            <label className="flex-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAttachmentChange}
+                className="hidden"
+              />
+              <div className="h-32 border border-dashed border-muted-foreground/40 rounded-md flex flex-col items-center justify-center gap-2 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Selected attachment" className="h-full w-full object-cover rounded-md" />
+                ) : (
+                  <>
+                    <ImagePlus className="w-5 h-5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Tap to upload an image</span>
+                  </>
+                )}
+              </div>
+            </label>
+            {attachment && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAttachment(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+          {attachment && (
+            <p className="text-xs text-muted-foreground truncate">
+              {attachment.name} ({Math.round(attachment.size / 1024)} KB)
+            </p>
+          )}
         </div>
 
         {/* Send button */}

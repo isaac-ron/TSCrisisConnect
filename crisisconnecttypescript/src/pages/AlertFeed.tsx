@@ -1,170 +1,161 @@
-import { useState } from 'react';
-import { Card } from '../ui/card';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Button } from '../ui/button';
-import { MapPin, ExternalLink, Flame, Droplets, Users, Zap, ChevronDown, ChevronUp } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { AlertTriangle, Clock, MapPin, Info } from 'lucide-react';
+import { Skeleton } from '../ui/skeleton';
+
+// Define the structure of a report to match the backend data
+interface Report {
+  id: number;
+  description: string;
+  location: string | null;
+  status: string;
+  timestamp: string;
+  severity: string | null;
+  extractedLocation: string | null;
+}
+
+// Helper function to format how long ago a report was made
+const timeSince = (date: Date): string => {
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  let interval = seconds / 31536000;
+  if (interval > 1) return Math.floor(interval) + " years ago";
+  interval = seconds / 2592000;
+  if (interval > 1) return Math.floor(interval) + " months ago";
+  interval = seconds / 86400;
+  if (interval > 1) return Math.floor(interval) + " days ago";
+  interval = seconds / 3600;
+  if (interval > 1) return Math.floor(interval) + " hours ago";
+  interval = seconds / 60;
+  if (interval > 1) return Math.floor(interval) + " minutes ago";
+  return Math.floor(seconds) + " seconds ago";
+};
+
+// Helper to set the badge color based on the report's severity
+const getSeverityBadgeClass = (severity: string | null): string => {
+  switch (severity?.toLowerCase()) {
+    case 'critical':
+      return 'bg-red-600 text-white';
+    case 'high':
+      return 'bg-orange-500 text-white';
+    case 'medium':
+      return 'bg-yellow-400 text-black';
+    case 'low':
+      return 'bg-blue-500 text-white';
+    default:
+      return 'bg-gray-500 text-white';
+  }
+};
 
 export function AlertFeed() {
-  const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleAlert = (alertId: string) => {
-    const newExpanded = new Set(expandedAlerts);
-    if (newExpanded.has(alertId)) {
-      newExpanded.delete(alertId);
-    } else {
-      newExpanded.add(alertId);
-    }
-    setExpandedAlerts(newExpanded);
-  };
-
-  const alerts = [
-    {
-      id: '1',
-      content: 'Wildfire spreading rapidly in Pine Valley area. Evacuation orders issued for zones A-C.',
-      urgency: 'urgent',
-      location: 'Pine Valley, CA',
-      time: '2 min ago',
-      type: 'fire',
-      source: 'x',
-      details: 'California Department of Forestry reports 500+ acres burned with 0% containment. Red Flag warning in effect. Evacuate immediately if in affected zones.',
-    },
-    {
-      id: '2',
-      content: 'Flash flood warning issued for downtown area. Avoid low-lying roads.',
-      urgency: 'moderate',
-      location: 'Downtown District',
-      time: '15 min ago', 
-      type: 'flood',
-      source: 'x',
-      details: 'National Weather Service: 2-4 inches of rain expected in next 2 hours. Multiple streets already experiencing flooding. Emergency shelters open at City Hall and Community Center.',
-    },
-    {
-      id: '3',
-      content: 'Peaceful protest gathering at City Park. Road closures on Main St from 2-6 PM.',
-      urgency: 'low',
-      location: 'City Park',
-      time: '1 hour ago',
-      type: 'crowd', 
-      source: 'x',
-      details: 'Organized demonstration for community safety. Police providing traffic management. Alternative routes: Oak Ave or Elm Street.',
-    },
-    {
-      id: '4',
-      content: 'Power outage affecting 15,000 residents in North Hills. Cause under investigation.',
-      urgency: 'moderate',
-      location: 'North Hills',
-      time: '2 hours ago',
-      type: 'power',
-      source: 'x', 
-      details: 'Utility company estimates 4-6 hour restoration time. Emergency generator available at North Hills Community Center. Check on elderly neighbors.',
-    },
-  ];
-
-  const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent': return 'bg-red-100 text-red-800 border-red-300';
-      case 'moderate': return 'bg-yellow-100 text-yellow-800 border-yellow-300'; 
-      case 'low': return 'bg-green-100 text-green-800 border-green-300';
-      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+  // Function to fetch reports from the backend API
+  const fetchReports = async () => {
+    try {
+      // Ingest new tweets first
+      await fetch('/social/ingest-tweets', { method: 'POST' });
+      
+      // Then fetch all social media alerts
+      const response = await fetch('/social/social-alerts');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.statusText}`);
+      }
+      const data: Report[] = await response.json();
+      // Sort reports to show the newest ones first
+      data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setReports(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getUrgencyIcon = (urgency: string) => {
-    switch (urgency) {
-      case 'urgent': return '🔴';
-      case 'moderate': return '🟡';
-      case 'low': return '🟢'; 
-      default: return '⚪';
-    }
-  };
+  // Fetch reports when the component first loads and then poll for new data
+  useEffect(() => {
+    fetchReports(); // Initial fetch
+    const intervalId = setInterval(fetchReports, 10000); // Refresh every 10 seconds
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'fire': return <Flame className="w-4 h-4 text-red-600" />;
-      case 'flood': return <Droplets className="w-4 h-4 text-blue-600" />;
-      case 'crowd': return <Users className="w-4 h-4 text-purple-600" />;
-      case 'power': return <Zap className="w-4 h-4 text-yellow-600" />;
-      default: return null;
-    }
-  };
+    // Clean up the interval when the component is unmounted
+    return () => clearInterval(intervalId);
+  }, []);
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="sticky top-0 bg-background border-b border-border p-4">
-        <div className="flex items-center justify-between">
-          <h2>Crisis Alerts</h2>
-          <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
-            Live Feed
-          </Badge>
-        </div>
-      </div>
-
-      {/* Alert feed */}
-      <div className="p-4 space-y-3">
-        {alerts.map((alert) => (
-          <Card key={alert.id} className="overflow-hidden">
-            <Collapsible
-              open={expandedAlerts.has(alert.id)}
-              onOpenChange={() => toggleAlert(alert.id)}
-            >
-              <div className="p-4 space-y-3">
-                {/* Alert header */}
-                <div className="flex items-start gap-3">
-                  <div className="flex items-center gap-2">
-                    {getTypeIcon(alert.type)}
-                    <Badge className={getUrgencyColor(alert.urgency)}>
-                      {getUrgencyIcon(alert.urgency)} {alert.urgency}
-                    </Badge>
-                  </div>
-                  <div className="flex-1 text-right">
-                    <span className="text-xs text-muted-foreground">{alert.time}</span>
-                  </div>
-                </div>
-
-                {/* Alert content */}
-                <p className="leading-relaxed">{alert.content}</p>
-
-                {/* Alert footer */}
-                <div className="flex items-center justify-between pt-2">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <MapPin className="w-3 h-3" />
-                    {alert.location}
-                    <span className="text-xs">•</span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-3 h-3 bg-black rounded-sm flex items-center justify-center">
-                        <span className="text-white text-xs">𝕏</span>
-                      </span>
-                      Source
-                    </span>
-                  </div>
-
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className="p-1 h-auto">
-                      {expandedAlerts.has(alert.id) ? (
-                        <ChevronUp className="w-4 h-4" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </CollapsibleTrigger>
-                </div>
+  // Show loading skeletons while data is being fetched
+  if (loading) {
+    return (
+      <div className="space-y-4 p-4">
+        <h1 className="text-2xl font-bold">Live Alert Feed</h1>
+        {[...Array(3)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-4 w-1/4 mt-2" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <div className="flex items-center pt-2">
+                <Skeleton className="h-4 w-1/2" />
               </div>
-
-              <CollapsibleContent>
-                <div className="border-t border-border px-4 py-3 bg-muted/30">
-                  <p className="text-sm leading-relaxed mb-3">{alert.details}</p>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <ExternalLink className="w-3 h-3" />
-                    View Full Report
-                  </Button>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
+            </CardContent>
           </Card>
         ))}
       </div>
+    );
+  }
+
+  // Show an error message if the fetch request fails
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Failed to Load Alerts</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <p className="text-muted-foreground mt-2">Please check the server connection and try again.</p>
+      </div>
+    );
+  }
+
+  // Show a message if there are no reports
+  if (reports.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <Info className="w-12 h-12 text-blue-500 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">No Active Alerts</h2>
+        <p className="text-muted-foreground">The alert feed is currently empty. New reports will appear here as they are submitted.</p>
+      </div>
+    );
+  }
+
+  // Render the list of fetched reports
+  return (
+    <div className="space-y-4 p-4">
+      <h1 className="text-2xl font-bold">Live Alert Feed</h1>
+      {reports.map((report) => (
+        <Card key={report.id} className="overflow-hidden">
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <CardTitle className="text-lg font-semibold leading-tight">{report.description}</CardTitle>
+              <Badge className={getSeverityBadgeClass(report.severity)}>
+                {report.severity || 'Unknown'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center text-sm text-muted-foreground mb-2">
+              <MapPin className="w-4 h-4 mr-2" />
+              Location: {report.extractedLocation || report.location || 'Not specified'}
+            </div>
+            <div className="flex items-center text-sm text-muted-foreground">
+              <Clock className="w-4 h-4 mr-2" />
+              Reported: {timeSince(new Date(report.timestamp))}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }

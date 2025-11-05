@@ -29,6 +29,7 @@ model Report {
   location          String?
   status            String   @default("pending")
   timestamp         DateTime @default(now())
+  attachment        String?
   user              User     @relation(fields: [userId], references: [id])
   userId            Int
 
@@ -36,6 +37,10 @@ model Report {
   source            String   @default("direct_report") // "direct_report" or "twitter"
   extractedLocation String?
   severity          String?  // e.g., "High", "Medium", "Low"
+  crisisType        String?
+  confidence        Float?
+  latitude          Float?
+  longitude         Float?
   isVerified        Boolean  @default(false)
 }
 
@@ -46,4 +51,20 @@ model Message {
   timestamp DateTime @default(now())
   sender    User     @relation(fields: [senderId], references: [id])
   senderId  Int
+}
+
+model SocialAlert {
+  id                Int      @id @default(autoincrement())
+  description       String
+  source            String // e.g., 'twitter', 'facebook'
+  sourceUrl         String?
+  timestamp         DateTime @default(now())
+  isVerified        Boolean  @default(false)
+
+  // NLP and Geocoding data
+  crisisType        String?  // e.g., 'earthquake', 'fire', 'flood', etc.
+  extractedLocation String?
+  severity          String?
+  latitude          Float?
+  longitude         Float?
 }

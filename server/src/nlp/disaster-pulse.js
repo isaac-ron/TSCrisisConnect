@@ -1,0 +1,318 @@
+// DisasterPulse: Dynamic Crisis Detection and Classification System
+// Uses adaptive ML models with intelligent fallbacks
+
+import { classifyTweetLocal, extractEntitiesLocal } from './local-model-loader.js';
+import { classifyWithPublicModel, extractLocationPublic, classifyZeroShot } from './public-model-fallback.js';
+import { geocodeLocation as geocodeWithService } from '../services/geocoder.js';
+
+// Flag to track if local model failed and we should use fallback
+let usePublicFallback = false;
+
+// Crisis indicators (signals that something is a crisis, not just specific types)
+const CRISIS_INDICATORS = {
+  urgency: ['urgent', 'emergency', 'help', 'sos', 'please', 'anyone', 'immediately', 'now', 'asap'],
+  action: ['evacuate', 'evacuation', 'shelter', 'lockdown', 'alert', 'warning', 'flee', 'run', 'escape'],
+  impact: ['casualties', 'injured', 'dead', 'deaths', 'victim', 'victims', 'trapped', 'missing', 'damage', 'damaged', 'destroyed', 'collapsed'],
+  scale: ['massive', 'major', 'severe', 'widespread', 'multiple', 'many', 'numerous', 'huge', 'devastating'],
+  response: ['ambulance', 'police', 'firefighters', 'rescue', 'military', 'authorities', 'emergency services', 'first responders'],
+  hazard: [
+    'earthquake', 'quake', 'aftershock', 'tremor',
+    'wildfire', 'fire', 'inferno', 'blaze',
+    'flood', 'flooding', 'flash flood', 'deluge',
+    'hurricane', 'cyclone', 'typhoon', 'storm',
+    'tornado', 'twister',
+    'explosion', 'blast', 'bombing',
+    'shooting', 'gunfire', 'gunshots', 'active shooter',
+    'landslide', 'avalanche',
+    'collapse', 'derailment', 'crash', 'pile-up'
+  ]
+};
+
+// Non-crisis indicators (helps filter out false positives)
+const NON_CRISIS_INDICATORS = [
+  'traffic', 'commute', 'delayed', 'boring', 'annoying', 'frustrated',
+  'movie', 'game', 'show', 'concert', 'party', 'celebration', 'event',
+  'metaphor', 'literally', 'figuratively', 'like', 'so', 'just',
+  'yesterday', 'last week', 'last month', 'last year', 'history', 'memorial', 'remember'
+];
+
+// Dynamic severity scoring based on context, not just keywords
+const SEVERITY_INDICATORS = {
+  critical: {
+    keywords: ['active', 'ongoing', 'imminent', 'mass', 'catastrophic', 'life-threatening', 'critical', 'extreme'],
+    crisisTypes: ['earthquake', 'shooting', 'bombing', 'explosion', 'hurricane', 'tornado', 'nuclear', 'chemical attack', 'terrorist attack', 'building collapse']
+  },
+  high: {
+    keywords: ['serious', 'significant', 'major', 'spreading', 'rapid', 'multiple', 'large', 'dangerous'],
+    crisisTypes: ['fire', 'wildfire', 'flood', 'outbreak', 'epidemic', 'riot', 'crash', 'plane crash', 'gas leak', 'hostage', 'armed attack']
+  },
+  medium: {
+    keywords: ['developing', 'potential', 'possible', 'reported', 'unconfirmed', 'minor', 'small'],
+    crisisTypes: ['protest', 'power outage', 'water contamination', 'minor accident', 'theft', 'vandalism']
+  }
+};
+
+/**
+ * Analyzes a tweet using adaptive crisis detection.
+ * @param {string} text The text to analyze.
+ * @returns {Promise<object>} Analysis result with crisis info, location, and coordinates.
+ */
+export async function analyzeTweetWithDisasterPulse(text) {
+  try {
+    console.log(`[DisasterPulse] 🔍 Analyzing: "${text.substring(0, 100)}..."`);
+
+    // --- Stage 1: Initial Crisis Detection ---
+    const isCrisisCandidate = await detectCrisisCandidate(text);
+    
+    if (!isCrisisCandidate.isCrisis) {
+      console.log('[DisasterPulse] ❌ Not a crisis (failed initial screening)');
+      return { isCrisis: false };
+    }
+
+    console.log(`[DisasterPulse] ✅ Crisis candidate (confidence: ${(isCrisisCandidate.confidence * 100).toFixed(1)}%)`);
+
+    // --- Stage 2: Dynamic Crisis Type Classification ---
+    const crisisTypeResult = await classifyCrisisTypeDynamic(text);
+    
+    console.log(`[DisasterPulse] 🏷️  Type: ${crisisTypeResult.crisisType} (${(crisisTypeResult.confidence * 100).toFixed(1)}%)`);
+
+    // --- Stage 3: Context-Aware Severity Assessment ---
+    const severity = assessSeverityDynamic(text, crisisTypeResult.crisisType);
+    console.log(`[DisasterPulse] ⚠️  Severity: ${severity}`);
+
+    // --- Stage 4: Location Extraction ---
+    const locationData = await extractLocationLocal(text);
+
+    // --- Stage 5: Geocoding ---
+    let coordinates = null;
+    if (locationData.extractedLocation) {
+      coordinates = await geocodeLocation(locationData.extractedLocation);
+    }
+
+    return {
+      isCrisis: true,
+      crisisType: crisisTypeResult.crisisType,
+      confidence: crisisTypeResult.confidence,
+      severity,
+      extractedLocation: locationData.extractedLocation,
+      latitude: coordinates ? coordinates.latitude : null,
+      longitude: coordinates ? coordinates.longitude : null,
+    };
+  } catch (error) {
+    console.error('[DisasterPulse] ❌ Error during analysis:', error);
+    return { isCrisis: false, error: error.message };
+  }
+}
+
+/**
+ * Initial crisis detection using multiple signals (not just keywords).
+ */
+async function detectCrisisCandidate(text) {
+  const lowerText = text.toLowerCase();
+  
+  // Calculate crisis indicator score
+  let crisisScore = 0;
+  let indicatorCategories = 0;
+  
+  for (const [category, keywords] of Object.entries(CRISIS_INDICATORS)) {
+    const matches = keywords.filter(kw => lowerText.includes(kw)).length;
+    if (matches > 0) {
+      crisisScore += matches;
+      indicatorCategories++;
+    }
+  }
+  
+  // Check for non-crisis indicators (false positive filters)
+  const nonCrisisMatches = NON_CRISIS_INDICATORS.filter(kw => lowerText.includes(kw)).length;
+  
+  // Calculate confidence based on positive vs negative indicators
+  const positiveSignal = crisisScore / Math.max(indicatorCategories, 1);
+  const negativeSignal = nonCrisisMatches * 0.3;
+  const confidence = Math.max(0, Math.min(1, (positiveSignal - negativeSignal) / 3));
+  
+  console.log(`[DisasterPulse] 📊 Crisis indicators: ${crisisScore} | Non-crisis: ${nonCrisisMatches} | Confidence: ${(confidence * 100).toFixed(1)}%`);
+  
+  // Use ML model for final decision if confidence is borderline
+  if (confidence >= 0.25 && confidence < 0.75) {
+    try {
+      console.log('[DisasterPulse] 🤖 Confidence borderline, consulting ML model...');
+      const mlResult = usePublicFallback 
+        ? await classifyWithPublicModel(text)
+        : await classifyTweetLocal(text);
+      
+      const isCrisis = Array.isArray(mlResult) 
+        ? mlResult[0].label.toLowerCase().includes('crisis')
+        : mlResult.isCrisis;
+      
+      return { isCrisis, confidence: Math.max(confidence, 0.5) };
+    } catch (error) {
+      console.warn('[DisasterPulse] ⚠️  ML classification failed, using heuristic result');
+      if (!usePublicFallback) {
+        console.warn('[DisasterPulse] 🔁 Switching to public fallback models for future requests');
+        usePublicFallback = true;
+      }
+    }
+  }
+  
+  return { 
+    isCrisis: confidence >= 0.3, 
+    confidence 
+  };
+}
+
+/**
+ * Dynamic crisis type classification using zero-shot learning.
+ * Allows the model to recognize any crisis type, not just predefined ones.
+ */
+async function classifyCrisisTypeDynamic(text) {
+  // Comprehensive list of crisis categories (easily expandable)
+  const crisisCategories = [
+    // Natural disasters
+    'earthquake', 'fire', 'wildfire', 'flood', 'hurricane', 'tornado', 'tsunami',
+    'volcanic eruption', 'landslide', 'avalanche', 'drought', 'heatwave', 'blizzard', 'storm',
+    
+    // Human-caused emergencies
+    'shooting', 'active shooter', 'bombing', 'explosion', 'terrorist attack', 'armed conflict',
+    'chemical attack', 'nuclear incident', 'biological hazard', 'cyberattack',
+    
+    // Accidents
+    'vehicle crash', 'car accident', 'train derailment', 'plane crash', 'ship accident',
+    'building collapse', 'bridge collapse', 'gas leak', 'industrial accident',
+    
+    // Public health
+    'disease outbreak', 'epidemic', 'pandemic', 'food poisoning', 'water contamination',
+    'medical emergency', 'health crisis',
+    
+    // Civil unrest
+    'riot', 'protest', 'civil unrest', 'looting', 'hostage situation', 'kidnapping',
+    
+    // Infrastructure
+    'power outage', 'blackout', 'water shortage', 'communication failure',
+    
+    // Other emergencies
+    'missing person', 'search and rescue', 'evacuation', 'emergency situation'
+  ];
+  
+  try {
+    // Use zero-shot classification to determine the most likely crisis type
+    const result = await classifyZeroShot(text, crisisCategories);
+    
+    return {
+      crisisType: result.label,
+      confidence: result.score
+    };
+  } catch (error) {
+    console.warn('[DisasterPulse] ⚠️  Zero-shot classification failed, using keyword fallback');
+    // Fallback to keyword-based detection
+    return inferCrisisTypeFromKeywords(text);
+  }
+}
+
+/**
+ * Fallback keyword-based crisis type inference.
+ */
+function inferCrisisTypeFromKeywords(text) {
+  const lowerText = text.toLowerCase();
+  
+  const patterns = [
+    { regex: /earthquake|tremor|shake|seismic|quake/i, type: 'earthquake', confidence: 0.9 },
+    { regex: /fire|wildfire|blaze|burning|flames/i, type: 'fire', confidence: 0.9 },
+    { regex: /flood|flooding|water rising|river overflow|inundation/i, type: 'flood', confidence: 0.9 },
+    { regex: /hurricane|typhoon|cyclone/i, type: 'hurricane', confidence: 0.95 },
+    { regex: /tornado|twister/i, type: 'tornado', confidence: 0.95 },
+    { regex: /shoot|shooter|gunfire|gunman|active shooter|gunshots/i, type: 'shooting', confidence: 0.85 },
+    { regex: /bomb|bombing|explosive|ied|detonation/i, type: 'bombing', confidence: 0.85 },
+    { regex: /explosion|explode|blast/i, type: 'explosion', confidence: 0.85 },
+    { regex: /crash|collision|accident|pile-?up/i, type: 'vehicle crash', confidence: 0.8 },
+    { regex: /derail|train.*crash/i, type: 'train derailment', confidence: 0.9 },
+    { regex: /outbreak|epidemic|pandemic|virus|disease|infection/i, type: 'disease outbreak', confidence: 0.85 },
+    { regex: /riot|looting|civil unrest|mob/i, type: 'riot', confidence: 0.8 },
+    { regex: /building.*collaps|structure.*fail/i, type: 'building collapse', confidence: 0.9 },
+    { regex: /gas.*leak|chemical.*spill|toxic/i, type: 'gas leak', confidence: 0.85 },
+    { regex: /hostage|kidnap/i, type: 'hostage situation', confidence: 0.9 },
+    { regex: /plane.*crash|aircraft.*down/i, type: 'plane crash', confidence: 0.95 },
+  ];
+  
+  for (const pattern of patterns) {
+    if (pattern.regex.test(lowerText)) {
+      console.log(`[DisasterPulse] 🎯 Keyword match: ${pattern.type}`);
+      return { crisisType: pattern.type, confidence: pattern.confidence };
+    }
+  }
+  
+  return { crisisType: 'emergency situation', confidence: 0.6 };
+}
+
+/**
+ * Context-aware severity assessment.
+ * Considers both the crisis type AND contextual indicators.
+ */
+function assessSeverityDynamic(text, crisisType) {
+  const lowerText = text.toLowerCase();
+  
+  // Start with base severity from crisis type
+  let baseSeverity = 'Medium';
+  
+  for (const [level, data] of Object.entries(SEVERITY_INDICATORS)) {
+    if (data.crisisTypes.some(type => crisisType.toLowerCase().includes(type.toLowerCase()))) {
+      baseSeverity = level.charAt(0).toUpperCase() + level.slice(1);
+      break;
+    }
+  }
+  
+  // Adjust severity based on contextual keywords
+  let severityAdjustment = 0;
+  
+  // Check for severity-increasing indicators
+  if (SEVERITY_INDICATORS.critical.keywords.some(kw => lowerText.includes(kw))) {
+    severityAdjustment += 2;
+  }
+  if (SEVERITY_INDICATORS.high.keywords.some(kw => lowerText.includes(kw))) {
+    severityAdjustment += 1;
+  }
+  
+  // Check for severity-decreasing indicators  
+  if (SEVERITY_INDICATORS.medium.keywords.some(kw => lowerText.includes(kw))) {
+    severityAdjustment -= 1;
+  }
+  
+  // Check for impact indicators
+  const impactScore = CRISIS_INDICATORS.impact.filter(kw => lowerText.includes(kw)).length;
+  if (impactScore >= 2) severityAdjustment += 1;
+  
+  // Check for scale indicators
+  const scaleScore = CRISIS_INDICATORS.scale.filter(kw => lowerText.includes(kw)).length;
+  if (scaleScore >= 2) severityAdjustment += 1;
+  
+  // Map to final severity level
+  const severityLevels = ['Low', 'Medium', 'High', 'Critical'];
+  let currentIndex = severityLevels.indexOf(baseSeverity);
+  currentIndex = Math.max(0, Math.min(3, currentIndex + severityAdjustment));
+  
+  return severityLevels[currentIndex];
+}
+
+/**
+ * Extracts location information using NER model with public fallback.
+ */
+async function extractLocationLocal(text) {
+  console.log('[DisasterPulse] 📍 Extracting location...');
+  
+  try {
+    const location = await extractLocationPublic(text);
+    console.log(`[DisasterPulse] Location: "${location || 'None'}"`);
+    return { extractedLocation: location };
+    
+  } catch (error) {
+    console.error('[DisasterPulse] ❌ Location extraction error:', error);
+    return { extractedLocation: null };
+  }
+}
+
+/**
+ * Converts a location name into geographic coordinates using the geocoder service.
+ */
+async function geocodeLocation(locationText) {
+  console.log(`[DisasterPulse] 🗺️  Geocoding: "${locationText}"`);
+  return await geocodeWithService(locationText, 'nominatim'); // Use Nominatim by default
+}

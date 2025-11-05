@@ -1,14 +1,64 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Locate, Layers, Flame, Droplets, Users, Zap, TreePine, Cross } from 'lucide-react';
 import LeafletMap from '../components/LeafletMap';
+import { API_BASE_URL } from '../lib/config';
+
+interface Report {
+  id: number;
+  description: string;
+  location: string;
+  extractedLocation: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  crisisType: string | null;
+  severity: string | null;
+  confidence: number | null;
+  createdAt: string;
+}
 
 export function MapView() {
   const [showMyLocation, setShowMyLocation] = useState(true);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock alert data with coordinates - formatted for Leaflet component
-  const alertsWithLocations = [
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  const fetchReports = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/reports`);
+      const data = await response.json();
+      console.log('📍 Fetched reports:', data);
+      setReports(data);
+    } catch (error) {
+      console.error('❌ Error fetching reports:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Transform reports to alert format for the map
+  const alertsWithLocations = reports
+    .filter(report => report.latitude !== null && report.longitude !== null)
+    .map(report => ({
+      id: report.id.toString(),
+      type: report.crisisType || 'Unknown Crisis',
+      urgency: report.severity || 'Medium',
+      description: report.description,
+      location: {
+        lat: report.latitude!,
+        lng: report.longitude!,
+        address: report.extractedLocation || report.location || 'Unknown Location'
+      },
+      timestamp: report.createdAt,
+      alertType: report.crisisType?.toLowerCase() || 'unknown',
+    }));
+
+  // Keep some mock data for display purposes if no real data yet
+  const mockAlertsWithLocations = [
     {
       id: '1',
       type: 'Wildfire Emergency',
@@ -125,12 +175,30 @@ export function MapView() {
 
       {/* Map Container */}
       <div className="relative h-96">
-        <LeafletMap
-          alerts={alertsWithLocations}
-          center={[0, 20]} // Global view to show both US and Kenya
-          zoom={3}
-        />
+        {loading ? (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-2"></div>
+              <p className="text-sm text-muted-foreground">Loading crisis reports...</p>
+            </div>
+          </div>
+        ) : (
+          <LeafletMap
+            alerts={alertsWithLocations}
+            center={alertsWithLocations.length > 0 ? [alertsWithLocations[0].location.lat, alertsWithLocations[0].location.lng] : [0, 20]}
+            zoom={alertsWithLocations.length > 0 ? 10 : 3}
+          />
+        )}
       </div>
+
+      {/* Report Count */}
+      {!loading && (
+        <div className="px-4 py-2 bg-muted">
+          <p className="text-sm text-muted-foreground">
+            📍 Showing {alertsWithLocations.length} crisis report{alertsWithLocations.length !== 1 ? 's' : ''} with location data
+          </p>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="p-4">

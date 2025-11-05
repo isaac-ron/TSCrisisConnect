@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 import { processTextForCrisisInfo } from "../shared/nlp-module.js";
+import { analyzeCrisisImage, analyzeMultimodalCrisis } from "../services/image-crisis-detector.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -45,11 +46,17 @@ router.post("/", async (req, res) => {
   const results = [];
   for (const msg of messages) {
     // Accept both offline and online message formats
-    const { message, category, description, location, userId, content } = msg;
+    const { message, category, description, location, userId, content, attachment } = msg;
     // Prefer 'description' if present, else use 'message' or 'content'
     const desc = description || message || content;
-    
-    console.log('📄 [POST /reports] Processing message:', { desc, category, location, userId });
+
+    console.log('📄 [POST /reports] Processing message:', {
+      desc,
+      category,
+      location,
+      userId,
+      hasAttachment: Boolean(attachment),
+    });
     
     if (!desc) {
       console.warn('⚠️ [POST /reports] Skipping message with no content');
@@ -62,6 +69,43 @@ router.post("/", async (req, res) => {
       const nlpData = await processTextForCrisisInfo(desc);
       console.log('✅ [POST /reports] NLP result:', nlpData);
       
+      // Analyze image if attachment is provided
+      let imageAnalysis = null;
+      if (attachment) {
+        console.log('🖼️  [POST /reports] Analyzing attached image with Gemini...');
+        imageAnalysis = await analyzeCrisisImage(attachment);
+        console.log('✅ [POST /reports] Image analysis result:', {
+          isCrisis: imageAnalysis.isCrisis,
+          crisisType: imageAnalysis.crisisType,
+          confidence: imageAnalysis.confidence,
+          severity: imageAnalysis.severity,
+        });
+      }
+      
+      // Combine text and image analysis
+      // Image analysis takes precedence if it has high confidence
+      let finalCrisisType = nlpData.crisisType;
+      let finalSeverity = nlpData.severity;
+      let finalConfidence = nlpData.confidence;
+      let finalLocation = nlpData.extractedLocation;
+      
+      if (imageAnalysis && imageAnalysis.isCrisis && imageAnalysis.confidence > 0.7) {
+        console.log('🎯 [POST /reports] Image analysis has high confidence, using image-based detection');
+        finalCrisisType = imageAnalysis.crisisType || finalCrisisType;
+        finalSeverity = imageAnalysis.severity || finalSeverity;
+        finalConfidence = Math.max(imageAnalysis.confidence, finalConfidence || 0);
+        // Use image location if detected and text didn't find one
+        if (imageAnalysis.location && !finalLocation) {
+          finalLocation = imageAnalysis.location;
+        }
+      } else if (imageAnalysis && imageAnalysis.isCrisis) {
+        console.log('⚖️  [POST /reports] Combining text and image analysis');
+        // Increase confidence if both text and image detect crisis
+        if (nlpData.isCrisis) {
+          finalConfidence = Math.min(1.0, (nlpData.confidence || 0.5) * 1.2);
+        }
+      }
+      
       const targetUserId = userId || (await getDefaultReporterUserId());
       console.log('👤 [POST /reports] Target user ID:', targetUserId);
       
@@ -69,11 +113,16 @@ router.post("/", async (req, res) => {
       const report = await prisma.report.create({
         data: {
           description: desc,
-          location: nlpData.extractedLocation || location || '',
+          location: finalLocation || location || '',
           status: category || undefined,
           userId: targetUserId,
-          extractedLocation: nlpData.extractedLocation,
-          severity: nlpData.severity,
+          attachment,
+          extractedLocation: finalLocation,
+          severity: finalSeverity,
+          crisisType: finalCrisisType,
+          confidence: finalConfidence,
+          latitude: nlpData.latitude,
+          longitude: nlpData.longitude,
         },
       });
       console.log('✅ [POST /reports] Report created with ID:', report.id);

@@ -1,9 +1,10 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
+import socialMediaRoutes from './routes/social-media.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -15,12 +16,15 @@ const app = express();
 const prisma = new PrismaClient();
 
 app.use(cors());
-app.use(express.json());
+// Increase limit to handle base64 encoded images (10MB limit)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 app.get('/', (req, res) => res.send('CrisisConnect API is running'));
 
 app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
+app.use('/social', socialMediaRoutes);
 
 // Start servercd server
 //npx prisma generate
