@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import {Card,CardContent,CardHeader,CardTitle} from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -14,9 +14,6 @@ import {
   MapPin,
   Users,
   Activity,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
 } from "lucide-react";
 
 interface FirstResponderDashboardProps {
@@ -24,99 +21,70 @@ interface FirstResponderDashboardProps {
   user?: UserProfile;
 }
 
-// Mock data for alerts
-const mockAlerts = [
-  {
-    id: "1",
-    type: "earthquake",
-    severity: "critical",
-    location: "Downtown Los Angeles",
-    time: "2 minutes ago",
-    description:
-      "Magnitude 6.2 earthquake detected. Multiple reports of structural damage.",
-    status: "active",
-    reportCount: 47,
-  },
-  {
-    id: "2",
-    type: "fire",
-    severity: "high",
-    location: "Griffith Park",
-    time: "15 minutes ago",
-    description:
-      "Wildfire spreading rapidly near residential areas.",
-    status: "active",
-    reportCount: 23,
-  },
-  {
-    id: "3",
-    type: "flood",
-    severity: "moderate",
-    location: "Santa Monica",
-    time: "1 hour ago",
-    description: "Flash flood warning due to heavy rainfall.",
-    status: "monitoring",
-    reportCount: 12,
-  },
-];
-
-// Mock data for user messages
-const mockMessages = [
-  {
-    id: "1",
-    sender: "Sarah Chen",
-    location: "Downtown LA",
-    time: "3 minutes ago",
-    message:
-      "Building shaking violently, people evacuating to street. Glass broken in lobby.",
-    category: "earthquake",
-    priority: "urgent",
-    status: "unread",
-  },
-  {
-    id: "2",
-    sender: "Mike Rodriguez",
-    location: "Griffith Park Area",
-    time: "8 minutes ago",
-    message:
-      "Can see flames approaching residential area. Evacuation needed immediately.",
-    category: "fire",
-    priority: "critical",
-    status: "unread",
-  },
-  {
-    id: "3",
-    sender: "Lisa Johnson",
-    location: "Santa Monica",
-    time: "25 minutes ago",
-    message:
-      "Streets flooding rapidly. Cars stalled. Need rescue assistance.",
-    category: "flood",
-    priority: "high",
-    status: "read",
-  },
-  {
-    id: "4",
-    sender: "David Park",
-    location: "Beverly Hills",
-    time: "1 hour ago",
-    message:
-      "All clear in our area. No damage reported. Standing by to assist.",
-    category: "status",
-    priority: "low",
-    status: "read",
-  },
-];
+interface Report {
+  id: string;
+  text: string;
+  latitude?: number;
+  longitude?: number;
+  crisisType?: string;
+  severity?: string;
+  isCrisis?: boolean;
+  createdAt: string;
+  userId?: string;
+  user?: {
+    name?: string;
+    email?: string;
+  };
+}
 
 export function FirstResponderDashboard({
   onLogout,
   user,
 }: FirstResponderDashboardProps) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const responderName = user?.name || "On Duty Responder";
   const responderBadgeLabel = user?.badgeId ? `Badge: ${user.badgeId}` : undefined;
   const responderEmail = user?.email;
+
+  useEffect(() => {
+    fetchReports();
+    const interval = setInterval(fetchReports, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchReports = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/reports');
+      if (response.ok) {
+        const data = await response.json();
+        setReports(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch reports:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter crisis reports
+  const crisisReports = reports.filter(r => r.isCrisis);
+  const criticalReports = crisisReports.filter(r => r.severity === 'Critical');
+  const activeAlerts = crisisReports.slice(0, 10); // Most recent crisis reports
+  const userMessages = reports.slice(0, 20); // All recent reports
+
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (seconds < 60) return `${seconds} seconds ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+    return `${Math.floor(seconds / 86400)} days ago`;
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -143,25 +111,6 @@ export function FirstResponderDashboard({
         return "bg-green-500 text-white";
       default:
         return "bg-gray-500 text-white";
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "active":
-        return (
-          <AlertTriangle className="w-4 h-4 text-red-500" />
-        );
-      case "monitoring":
-        return (
-          <AlertCircle className="w-4 h-4 text-yellow-500" />
-        );
-      case "resolved":
-        return (
-          <CheckCircle className="w-4 h-4 text-green-500" />
-        );
-      default:
-        return <XCircle className="w-4 h-4 text-gray-500" />;
     }
   };
 
@@ -202,7 +151,7 @@ export function FirstResponderDashboard({
                   <p className="text-sm text-muted-foreground">
                     Active Alerts
                   </p>
-                  <p className="text-2xl font-semibold">3</p>
+                  <p className="text-2xl font-semibold">{crisisReports.length}</p>
                 </div>
                 <AlertTriangle className="w-8 h-8 text-red-500" />
               </div>
@@ -213,9 +162,9 @@ export function FirstResponderDashboard({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    New Messages
+                    Critical
                   </p>
-                  <p className="text-2xl font-semibold">2</p>
+                  <p className="text-2xl font-semibold">{criticalReports.length}</p>
                 </div>
                 <MessageSquare className="w-8 h-8 text-orange-500" />
               </div>
@@ -228,7 +177,7 @@ export function FirstResponderDashboard({
                   <p className="text-sm text-muted-foreground">
                     Total Reports
                   </p>
-                  <p className="text-2xl font-semibold">82</p>
+                  <p className="text-2xl font-semibold">{reports.length}</p>
                 </div>
                 <Users className="w-8 h-8 text-blue-500" />
               </div>
@@ -267,8 +216,7 @@ export function FirstResponderDashboard({
             <Alert>
               <AlertTriangle className="w-4 h-4" />
               <AlertDescription>
-                2 critical alerts require immediate attention. 3
-                new user messages pending review.
+                {criticalReports.length} critical alerts require immediate attention. {crisisReports.length} crisis reports pending review.
               </AlertDescription>
             </Alert>
 
@@ -282,31 +230,40 @@ export function FirstResponderDashboard({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {mockAlerts.slice(0, 2).map((alert) => (
-                    <div
-                      key={alert.id}
-                      className="flex items-start justify-between p-3 border border-border rounded-lg"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {getStatusIcon(alert.status)}
-                          <Badge
-                            className={getSeverityColor(
-                              alert.severity,
-                            )}
-                          >
-                            {alert.severity}
-                          </Badge>
+                  {loading ? (
+                    <p className="text-sm text-muted-foreground">Loading...</p>
+                  ) : activeAlerts.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No active alerts</p>
+                  ) : (
+                    activeAlerts.slice(0, 2).map((report) => (
+                      <div
+                        key={report.id}
+                        className="flex items-start justify-between p-3 border border-border rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <AlertTriangle className="w-4 h-4 text-red-500" />
+                            <Badge
+                              className={getSeverityColor(
+                                report.severity?.toLowerCase() || 'moderate',
+                              )}
+                            >
+                              {report.severity || 'Unknown'}
+                            </Badge>
+                          </div>
+                          <p className="font-medium">
+                            {report.crisisType || 'Crisis'}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {report.text.substring(0, 80)}...
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {getTimeAgo(report.createdAt)}
+                          </p>
                         </div>
-                        <p className="font-medium">
-                          {alert.location}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {alert.description}
-                        </p>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </CardContent>
               </Card>
 
@@ -319,37 +276,48 @@ export function FirstResponderDashboard({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {mockMessages.slice(0, 2).map((message) => (
-                    <div
-                      key={message.id}
-                      className="p-3 border border-border rounded-lg"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">
-                            {message.sender}
-                          </p>
-                          <Badge
-                            className={getPriorityColor(
-                              message.priority,
+                  {loading ? (
+                    <p className="text-sm text-muted-foreground">Loading...</p>
+                  ) : userMessages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No messages</p>
+                  ) : (
+                    userMessages.slice(0, 2).map((report) => (
+                      <div
+                        key={report.id}
+                        className="p-3 border border-border rounded-lg"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">
+                              {report.user?.name || 'Anonymous'}
+                            </p>
+                            {report.isCrisis && (
+                              <Badge
+                                className={getPriorityColor(
+                                  report.severity === 'Critical' ? 'critical' : 
+                                  report.severity === 'High' ? 'urgent' : 'high'
+                                )}
+                              >
+                                {report.severity || 'Medium'}
+                              </Badge>
                             )}
-                          >
-                            {message.priority}
-                          </Badge>
+                          </div>
                         </div>
-                        {message.status === "unread" && (
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        {report.latitude && report.longitude && (
+                          <p className="text-sm text-muted-foreground mb-1">
+                            <MapPin className="w-3 h-3 inline mr-1" />
+                            {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                          </p>
                         )}
+                        <p className="text-sm">
+                          {report.text.substring(0, 100)}{report.text.length > 100 ? '...' : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {getTimeAgo(report.createdAt)}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-1">
-                        <MapPin className="w-3 h-3 inline mr-1" />
-                        {message.location}
-                      </p>
-                      <p className="text-sm">
-                        {message.message}
-                      </p>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -357,110 +325,129 @@ export function FirstResponderDashboard({
 
           <TabsContent value="alerts" className="space-y-4">
             <div className="space-y-4">
-              {mockAlerts.map((alert) => (
-                <Card key={alert.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(alert.status)}
-                        <Badge
-                          className={getSeverityColor(
-                            alert.severity,
-                          )}
-                        >
-                          {alert.severity}
-                        </Badge>
-                        <Badge variant="outline">
-                          {alert.type}
-                        </Badge>
+              {loading ? (
+                <Card><CardContent className="p-4">Loading alerts...</CardContent></Card>
+              ) : activeAlerts.length === 0 ? (
+                <Card><CardContent className="p-4">No active crisis alerts</CardContent></Card>
+              ) : (
+                activeAlerts.map((report) => (
+                  <Card key={report.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-500" />
+                          <Badge
+                            className={getSeverityColor(
+                              report.severity?.toLowerCase() || 'moderate',
+                            )}
+                          >
+                            {report.severity || 'Unknown'}
+                          </Badge>
+                          <Badge variant="outline">
+                            {report.crisisType || 'Crisis'}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {getTimeAgo(report.createdAt)}
+                        </div>
                       </div>
-                      <div className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {alert.time}
-                      </div>
-                    </div>
-                    <h3 className="font-medium mb-2">
-                      {alert.location}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      {alert.description}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">
-                        <Users className="w-3 h-3 inline mr-1" />
-                        {alert.reportCount} reports
+                      <h3 className="font-medium mb-2">
+                        {report.crisisType || 'Emergency Report'}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        {report.text}
                       </p>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          View Details
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="bg-destructive hover:bg-destructive/90"
-                        >
-                          Take Action
-                        </Button>
+                      {report.latitude && report.longitude && (
+                        <p className="text-sm text-muted-foreground mb-3">
+                          <MapPin className="w-3 h-3 inline mr-1" />
+                          Location: {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-muted-foreground">
+                          <Users className="w-3 h-3 inline mr-1" />
+                          Reported by: {report.user?.name || 'Anonymous'}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline">
+                            View on Map
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="bg-destructive hover:bg-destructive/90"
+                          >
+                            Take Action
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="messages" className="space-y-4">
             <div className="space-y-4">
-              {mockMessages.map((message) => (
-                <Card key={message.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">
-                          {message.sender}
-                        </p>
-                        <Badge
-                          className={getPriorityColor(
-                            message.priority,
+              {loading ? (
+                <Card><CardContent className="p-4">Loading messages...</CardContent></Card>
+              ) : userMessages.length === 0 ? (
+                <Card><CardContent className="p-4">No messages</CardContent></Card>
+              ) : (
+                userMessages.map((report) => (
+                  <Card key={report.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">
+                            {report.user?.name || 'Anonymous User'}
+                          </p>
+                          {report.isCrisis && (
+                            <Badge
+                              className={getPriorityColor(
+                                report.severity === 'Critical' ? 'critical' :
+                                report.severity === 'High' ? 'urgent' : 'high'
+                              )}
+                            >
+                              {report.severity || 'Crisis'}
+                            </Badge>
                           )}
+                          {report.crisisType && (
+                            <Badge variant="outline">
+                              {report.crisisType}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {getTimeAgo(report.createdAt)}
+                        </div>
+                      </div>
+                      {report.latitude && report.longitude && (
+                        <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {report.latitude.toFixed(4)}, {report.longitude.toFixed(4)}
+                        </p>
+                      )}
+                      <p className="text-sm mb-3">
+                        {report.text}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          View Location
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-destructive hover:bg-destructive/90"
                         >
-                          {message.priority}
-                        </Badge>
-                        <Badge variant="outline">
-                          {message.category}
-                        </Badge>
-                        {message.status === "unread" && (
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        )}
+                          Respond
+                        </Button>
                       </div>
-                      <div className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {message.time}
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {message.location}
-                    </p>
-                    <p className="text-sm mb-3">
-                      {message.message}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
-                        Mark as Read
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        Forward
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-destructive hover:bg-destructive/90"
-                      >
-                        Respond
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
           </TabsContent>
         </Tabs>
