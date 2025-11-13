@@ -12,7 +12,12 @@ const LOCAL_MODEL_PATH = path.join(LOCAL_MODEL_ROOT, 'CrisisTransformers', 'CT-M
 // Use a public crisis/emergency classification model instead
 const MODEL_ID = 'unitary/toxic-bert'; // or another suitable public model
 
+// Set the cache directory to ml-service so models are loaded from there
+env.cacheDir = LOCAL_MODEL_ROOT;
+env.allowLocalModels = true;
+
 console.log(`[LocalModel] Model path configured: ${LOCAL_MODEL_PATH}`);
+console.log(`[LocalModel] Cache directory set to: ${LOCAL_MODEL_ROOT}`);
 
 let crisisClassifier = null;
 let crisisClassifierPromise = null;
@@ -132,7 +137,119 @@ export async function loadNERModel() {
 }
 
 /**
- * Classifies a tweet using the Python ML service.
+ * Loaders and wrappers for two local models:
+ * - Binary crisis identifier (isCrisis: true/false)
+ * - Severity classifier (Low/Medium/High/Critical)
+ * These look for folders under `ml-service/CrisisTransformers/` named
+ * `crisis-binary` and `crisis-severity`. If not found, callers should
+ * fallback to remote/public models.
+ */
+
+let binaryModel = null;
+let binaryModelPromise = null;
+let severityModel = null;
+let severityModelPromise = null;
+
+// Candidate folder names to look for in `ml-service` or `ml-service/CrisisTransformers`
+const BINARY_CANDIDATES = [
+  'crisis-binary',
+  'my_final_binary_model',
+  'my_final_binary_model_4_class',
+  'binary_model'
+];
+
+const SEVERITY_CANDIDATES = [
+  'crisis-severity',
+  'my_final_severity_model_4_class',
+  'my_final_severity_model',
+  'severity_model'
+];
+
+function findModelDir(candidates) {
+  for (const name of candidates) {
+    const p1 = path.join(LOCAL_MODEL_ROOT, 'CrisisTransformers', name);
+    if (fs.existsSync(p1)) return p1;
+    const p2 = path.join(LOCAL_MODEL_ROOT, name);
+    if (fs.existsSync(p2)) return p2;
+  }
+  return null;
+}
+
+export async function loadBinaryModel() {
+  // SafeTensors models are incompatible with @xenova/transformers
+  // Use Python ML service instead
+  throw new Error('Binary model requires Python ML service');
+}
+
+export async function loadSeverityModel() {
+  // SafeTensors models are incompatible with @xenova/transformers
+  // Return a marker that we should use Python service
+  throw new Error('Severity model requires Python ML service');
+}
+
+/**
+ * Classify whether a piece of text indicates a crisis using the Python ML service.
+ * Returns { isCrisis: boolean, confidence: number }
+ */
+export async function classifyCrisisBinary(text) {
+  try {
+    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    const response = await fetch(`${ML_SERVICE_URL}/classify/binary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Python ML service error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    return { isCrisis: result.is_crisis, confidence: result.confidence };
+  } catch (err) {
+    console.error('[LocalModel] ❌ classifyCrisisBinary failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Classify severity using the Python ML service.
+ * Returns { severity: 'Low'|'Medium'|'High'|'Critical', confidence: number }
+ */
+export async function classifySeverity(text) {
+  try {
+    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    const response = await fetch(`${ML_SERVICE_URL}/classify/severity`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Python ML service error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    // Normalize the severity label from the model
+    let severity = result.severity;
+    const label = severity.toLowerCase();
+    
+    if (label.includes('low') || label.includes('0')) severity = 'Low';
+    else if (label.includes('critical') || label.includes('3')) severity = 'Critical';
+    else if (label.includes('high') || label.includes('2')) severity = 'High';
+    else if (label.includes('medium') || label.includes('1')) severity = 'Medium';
+    
+    return { severity, confidence: result.confidence };
+  } catch (err) {
+    console.error('[LocalModel] ❌ classifySeverity failed:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Classifies a tweet using the Python ML service (legacy fallback).
  */
 export async function classifyTweetLocal(text) {
   try {

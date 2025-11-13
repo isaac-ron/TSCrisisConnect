@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
 import socialMediaRoutes from './routes/social-media.js';
+import debugRoutes from './routes/debug.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -25,6 +26,7 @@ app.get('/', (req, res) => res.send('CrisisConnect API is running'));
 app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
 app.use('/social', socialMediaRoutes);
+app.use('/debug', debugRoutes);
 
 // Start servercd server
 //npx prisma generate

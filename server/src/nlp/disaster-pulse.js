@@ -1,7 +1,7 @@
 // DisasterPulse: Dynamic Crisis Detection and Classification System
 // Uses adaptive ML models with intelligent fallbacks
 
-import { classifyTweetLocal, extractEntitiesLocal } from './local-model-loader.js';
+import { classifyCrisisBinary, classifySeverity, classifyTweetLocal, extractEntitiesLocal } from './local-model-loader.js';
 import { classifyWithPublicModel, extractLocationPublic, classifyZeroShot } from './public-model-fallback.js';
 import { geocodeLocation as geocodeWithService } from '../services/geocoder.js';
 
@@ -61,11 +61,18 @@ export async function analyzeTweetWithDisasterPulse(text) {
   try {
     console.log(`[DisasterPulse] 🔍 Analyzing: "${text.substring(0, 100)}..."`);
 
-    // --- Stage 1: Initial Crisis Detection ---
-    const isCrisisCandidate = await detectCrisisCandidate(text);
+    // --- Stage 1: Initial Crisis Detection (Try new binary model, fallback to heuristic) ---
+    let isCrisisCandidate;
+    try {
+      isCrisisCandidate = await classifyCrisisBinary(text);
+      console.log(`[DisasterPulse] ✅ Binary model result: ${isCrisisCandidate.isCrisis} (confidence: ${(isCrisisCandidate.confidence * 100).toFixed(1)}%)`);
+    } catch (binaryError) {
+      console.warn('[DisasterPulse] ⚠️ Binary model unavailable, using heuristic detection');
+      isCrisisCandidate = await detectCrisisCandidate(text);
+    }
     
     if (!isCrisisCandidate.isCrisis) {
-      console.log('[DisasterPulse] ❌ Not a crisis (failed initial screening)');
+      console.log('[DisasterPulse] ❌ Not a crisis');
       return { isCrisis: false };
     }
 
@@ -77,8 +84,18 @@ export async function analyzeTweetWithDisasterPulse(text) {
     console.log(`[DisasterPulse] 🏷️  Type: ${crisisTypeResult.crisisType} (${(crisisTypeResult.confidence * 100).toFixed(1)}%)`);
 
     // --- Stage 3: Context-Aware Severity Assessment ---
-    const severity = assessSeverityDynamic(text, crisisTypeResult.crisisType);
-    console.log(`[DisasterPulse] ⚠️  Severity: ${severity}`);
+    let severity = assessSeverityDynamic(text, crisisTypeResult.crisisType);
+    // If a local severity model is available, prefer its prediction
+    try {
+      const sev = await classifySeverity(text);
+      if (sev && sev.severity) {
+        console.log(`[DisasterPulse] 🎚️  Severity (model): ${sev.severity} (conf ${(sev.confidence*100).toFixed(1)}%)`);
+        severity = sev.severity;
+      }
+    } catch (err) {
+      console.log(`[DisasterPulse] 🎚️  Severity (heuristic): ${severity}`);
+    }
+    console.log(`[DisasterPulse] ⚠️  Final Severity: ${severity}`);
 
     // --- Stage 4: Location Extraction ---
     const locationData = await extractLocationLocal(text);
@@ -136,15 +153,30 @@ async function detectCrisisCandidate(text) {
   if (confidence >= 0.25 && confidence < 0.75) {
     try {
       console.log('[DisasterPulse] 🤖 Confidence borderline, consulting ML model...');
-      const mlResult = usePublicFallback 
-        ? await classifyWithPublicModel(text)
-        : await classifyTweetLocal(text);
-      
-      const isCrisis = Array.isArray(mlResult) 
-        ? mlResult[0].label.toLowerCase().includes('crisis')
-        : mlResult.isCrisis;
-      
-      return { isCrisis, confidence: Math.max(confidence, 0.5) };
+      let isCrisis = false;
+      let mlConfidence = 0;
+
+      if (!usePublicFallback) {
+        // Prefer the local binary model if available
+        try {
+          const bin = await classifyCrisisBinary(text);
+          isCrisis = !!bin.isCrisis;
+          mlConfidence = bin.confidence || 0;
+          console.log(`[DisasterPulse] 🤖 Binary model returned isCrisis=${isCrisis} (conf ${(mlConfidence*100).toFixed(1)}%)`);
+        } catch (localErr) {
+          console.warn('[DisasterPulse] ⚠️ Local binary model unavailable, falling back to Python/local service');
+          const mlResult = await classifyTweetLocal(text);
+          isCrisis = mlResult.isCrisis;
+          mlConfidence = mlResult.confidence || 0;
+        }
+      } else {
+        const mlResult = await classifyWithPublicModel(text);
+        const out = Array.isArray(mlResult) ? mlResult[0] : mlResult;
+        isCrisis = !!(out.label && out.label.toLowerCase().includes('crisis'));
+        mlConfidence = out.score || 0;
+      }
+
+      return { isCrisis, confidence: Math.max(confidence, mlConfidence, 0.5) };
     } catch (error) {
       console.warn('[DisasterPulse] ⚠️  ML classification failed, using heuristic result');
       if (!usePublicFallback) {
