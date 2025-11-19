@@ -1,10 +1,4 @@
 services:
-  # PostgreSQL Database
-  - type: pserv
-    name: crisisconnect-db
-    env: docker
-    plan: free
-    region: oregon
     
   # ML Service (Python FastAPI with models from Hugging Face)
   - type: web
@@ -69,4 +63,3 @@ databases:
   - name: crisisconnect-db
     databaseName: crisisconnect
     user: crisisconnect
-    plan: free
