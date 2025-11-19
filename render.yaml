@@ -16,6 +16,8 @@ services:
         value: "8000"
       - key: HF_USERNAME
         value: "ron4444444"
+      - key: HF_TOKEN
+        sync: false
     healthCheckPath: /health
     
   # Backend API (Node.js/Express)

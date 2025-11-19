@@ -32,19 +32,27 @@ export async function loadCrisisClassifier() {
   // First try to connect to Python ML service
   try {
     const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    console.log(`[LocalModel] 🔍 Attempting to connect to ML service at ${ML_SERVICE_URL}...`);
+    
     const healthResponse = await fetch(`${ML_SERVICE_URL}/health`, { 
-      signal: AbortSignal.timeout(5000) // 5 second timeout
+      signal: AbortSignal.timeout(10000) // 10 second timeout for Render cold starts
     });
+    
+    console.log(`[LocalModel] 📡 Health check response status: ${healthResponse.status}`);
     
     if (healthResponse.ok) {
       const health = await healthResponse.json();
+      console.log(`[LocalModel] 📊 Health data:`, health);
+      
       if (health.model_loaded) {
         console.log(`[LocalModel] ✅ Connected to Python ML service at ${ML_SERVICE_URL}`);
         console.log(`[LocalModel] 🎯 Device: ${health.device}, Model: ${health.model_path}`);
         return { type: 'python-service', url: ML_SERVICE_URL };
+      } else {
+        throw new Error(`ML service models not loaded yet. Status: ${JSON.stringify(health)}`);
       }
     }
-    throw new Error(`ML service not ready: ${healthResponse.statusText}`);
+    throw new Error(`ML service health check failed: ${healthResponse.status} ${healthResponse.statusText}`);
   } catch (error) {
     console.warn('[LocalModel] ⚠️ Python ML service unavailable:', error.message);
     console.log('[LocalModel] 🔄 Will fall back to public models');
