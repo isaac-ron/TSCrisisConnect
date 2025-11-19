@@ -1,0 +1,75 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: crisisconnect-db
+    env: docker
+    plan: free
+    region: oregon
+    
+  # ML Service (Python FastAPI with models from Hugging Face)
+  - type: web
+    name: crisisconnect-ml
+    env: python
+    region: oregon
+    plan: free
+    rootDir: ml-service
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.10.0"
+      - key: PORT
+        value: "8000"
+      - key: HF_USERNAME
+        value: "ron4444444"
+    healthCheckPath: /health
+    
+  # Backend API (Node.js/Express)
+  - type: web
+    name: crisisconnect-backend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: "npm ci && npx prisma generate && npx prisma migrate deploy"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: crisisconnect-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+        sync: false
+      - key: ML_SERVICE_URL
+        value: "https://crisisconnect-ml.onrender.com"
+      - key: FRONTEND_URL
+        value: "https://crisisconnect-frontend.onrender.com"
+    
+  # Frontend (Static Site)
+  - type: web
+    name: crisisconnect-frontend
+    env: static
+    region: oregon
+    plan: free
+    rootDir: crisisconnecttypescript
+    buildCommand: "npm ci && npm run build"
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://crisisconnect-backend.onrender.com"
+      - key: VITE_ML_SERVICE_URL
+        value: "https://crisisconnect-ml.onrender.com"
+
+databases:
+  - name: crisisconnect-db
+    databaseName: crisisconnect
+    user: crisisconnect
+    plan: free
