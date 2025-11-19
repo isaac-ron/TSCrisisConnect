@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
-import { getAllMessages } from '../utils/offlineMessages';
+import { getAllMessages, markMessageSynced } from '../utils/offlineMessages';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { CheckCircle, Clock, Heart, Home, AlertTriangle } from 'lucide-react';
+import { Button } from '../ui/button';
+import { CheckCircle, Clock, Heart, Home, AlertTriangle, RefreshCw } from 'lucide-react';
+import { API_BASE_URL } from '../lib/config';
 
 export function Messages() {
   const [activeTab, setActiveTab] = useState('sent');
 
   const [sentMessages, setSentMessages] = useState<any[]>([]);
   const [pendingMessages, setPendingMessages] = useState<any[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   // Load messages from IndexedDB
   useEffect(() => {
@@ -27,6 +30,51 @@ export function Messages() {
       window.removeEventListener('messages-updated', loadMessages);
     };
   }, []);
+
+  const manualSync = async () => {
+    setSyncing(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please log in to sync messages');
+        return;
+      }
+
+      const messages = await getAllMessages();
+      const unsynced = messages.filter((m) => !m.synced);
+
+      for (const msg of unsynced) {
+        try {
+          console.log(`[Manual Sync] Syncing message ${msg.id}...`);
+          const response = await fetch(`${API_BASE_URL}/reports`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(msg),
+          });
+
+          if (response.ok) {
+            await markMessageSynced(msg.id);
+            console.log(`[Manual Sync] ✅ Synced message ${msg.id}`);
+          } else {
+            const errorText = await response.text();
+            console.error(`[Manual Sync] ❌ Failed: ${response.status} - ${errorText}`);
+          }
+        } catch (error) {
+          console.error(`[Manual Sync] ❌ Error:`, error);
+        }
+      }
+
+      // Reload messages
+      const all = await getAllMessages();
+      setSentMessages(all.filter((m) => m.synced));
+      setPendingMessages(all.filter((m) => !m.synced));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -106,9 +154,22 @@ export function Messages() {
 
           <TabsContent value="pending" className="mt-4 space-y-3">
             {pendingMessages.length > 0 ? (
-              pendingMessages.map((message) => (
-                <MessageCard key={message.id} message={message} />
-              ))
+              <>
+                <div className="flex justify-end mb-2">
+                  <Button 
+                    onClick={manualSync} 
+                    disabled={syncing}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing...' : 'Retry Sync'}
+                  </Button>
+                </div>
+                {pendingMessages.map((message) => (
+                  <MessageCard key={message.id} message={message} />
+                ))}
+              </>
             ) : (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">No pending messages</p>
