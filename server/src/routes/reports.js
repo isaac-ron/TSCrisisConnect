@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 import { processTextForCrisisInfo } from "../shared/nlp-module.js";
 import { analyzeCrisisImage, analyzeMultimodalCrisis } from "../services/image-crisis-detector.js";
+import { optionalAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -34,9 +35,10 @@ async function getDefaultReporterUserId() {
 
 
 // Accept single or batch offline-synced messages
-router.post("/", async (req, res) => {
+router.post("/", optionalAuth, async (req, res) => {
   console.log('🚀 [POST /reports] Request received');
   console.log('📦 [POST /reports] Request body:', JSON.stringify(req.body, null, 2));
+  console.log('👤 [POST /reports] Authenticated user:', req.user ? req.user.id : 'Anonymous');
   
   const body = req.body;
   // Accept either a single message or an array of messages
@@ -106,7 +108,8 @@ router.post("/", async (req, res) => {
         }
       }
       
-      const targetUserId = userId || (await getDefaultReporterUserId());
+      // Use authenticated user's ID if available, then userId from request, then default reporter
+      const targetUserId = req.user?.id || userId || (await getDefaultReporterUserId());
       console.log('👤 [POST /reports] Target user ID:', targetUserId);
       
       console.log('💾 [POST /reports] Creating report in database...');

@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ArrowLeft, WifiOff, Heart, Home, AlertTriangle, ImagePlus, Flame, Droplets, Mountain, CloudRain, ShieldAlert, Car, Building2, Skull, Zap } from 'lucide-react';
+import { API_BASE_URL } from '../lib/config';
 
 interface ComposeMessageProps {
   onClose: () => void;
@@ -72,10 +73,16 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
       
       if (isOnline) {
         try {
+          const token = localStorage.getItem('token');
           console.log('🌐 [ComposeMessage] Attempting POST to /reports...');
-          const response = await fetch('/reports', {
+          console.log('🔑 [ComposeMessage] Auth token:', token ? 'Present' : 'Missing');
+          
+          const response = await fetch(`${API_BASE_URL}/reports`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              ...(token && { 'Authorization': `Bearer ${token}` })
+            },
             body: JSON.stringify(msg),
           });
           
