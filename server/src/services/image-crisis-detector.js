@@ -1,11 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
 
 const MODEL_NAME = 'gemini-2.0-flash-exp';
-const API_KEY = process.env.GEMINI_API_KEY;
 
-// Verify API key is loaded
-if (!API_KEY) {
-  console.error('[ImageCrisisDetector] ❌ GEMINI_API_KEY is not set in environment variables');
+// Function to get API key (lazy evaluation)
+function getApiKey() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error('[ImageCrisisDetector] ❌ GEMINI_API_KEY is not set in environment variables');
+    throw new Error('GEMINI_API_KEY is required but not configured');
+  }
+  return apiKey;
 }
 
 /**
@@ -16,7 +20,7 @@ if (!API_KEY) {
 export async function analyzeCrisisImage(imageData) {
   try {
     console.log('[ImageCrisisDetector] 🖼️  Starting image analysis...');
-    const client = new GoogleGenAI({ apiKey: API_KEY });
+    const client = new GoogleGenAI({ apiKey: getApiKey() });
 
     if (!imageData) {
       console.warn('[ImageCrisisDetector] ⚠️  No image data provided');
