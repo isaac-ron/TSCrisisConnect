@@ -46,7 +46,8 @@ router.post("/register", async (req, res) => {
       },
     });
 
-    return res.status(201).json({ user: sanitizeUser(user) });
+    const token = signToken(user);
+    return res.status(201).json({ token, user: sanitizeUser(user) });
   } catch (error) {
     if (error?.code === "P2002") {
       return res.status(400).json({ error: "User already exists" });

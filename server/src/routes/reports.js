@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 import { processTextForCrisisInfo } from "../shared/nlp-module.js";
 import { analyzeCrisisImage, analyzeMultimodalCrisis } from "../services/image-crisis-detector.js";
-import { optionalAuth } from "../middleware/auth.js";
+import { optionalAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
