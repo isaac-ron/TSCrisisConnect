@@ -55,7 +55,6 @@ services:
   - type: web
     name: crisisconnect-frontend
     env: static
-    plan: free
     rootDir: crisisconnecttypescript
     buildCommand: "npm ci && npm run build"
     staticPublishPath: dist
