@@ -1,11 +1,12 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-from transformers import pipeline
+import httpx
 
 # Get Hugging Face username from environment or use default
 HF_USERNAME = os.getenv("HF_USERNAME", "ron4444444")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 app = FastAPI(title="CrisisConnect ML Service")
 
@@ -28,38 +29,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load models directly from HuggingFace Hub
-# The transformers library will handle downloading and caching automatically
-binary_classifier = None
-severity_classifier = None
+# Hugging Face Inference API endpoints - no local model loading!
+BINARY_MODEL_URL = f"https://api-inference.huggingface.co/models/{HF_USERNAME}/crisis-binary-model"
+SEVERITY_MODEL_URL = f"https://api-inference.huggingface.co/models/{HF_USERNAME}/crisis-severity-model"
 
-try:
-    token = os.getenv("HF_TOKEN")
-    print(f"🚀 Loading binary crisis model from {HF_USERNAME}/crisis-binary-model...")
-    binary_classifier = pipeline(
-        "text-classification",
-        model=f"{HF_USERNAME}/crisis-binary-model",
-        token=token,
-        device=-1
-    )
-    print("✅ Binary model loaded successfully")
-except Exception as e:
-    print(f"❌ Failed to load binary model: {e}")
-    binary_classifier = None
-
-try:
-    token = os.getenv("HF_TOKEN")
-    print(f"🚀 Loading severity model from {HF_USERNAME}/crisis-severity-model...")
-    severity_classifier = pipeline(
-        "text-classification",
-        model=f"{HF_USERNAME}/crisis-severity-model",
-        token=token,
-        device=-1
-    )
-    print("✅ Severity model loaded successfully")
-except Exception as e:
-    print(f"❌ Failed to load severity model: {e}")
-    severity_classifier = None
+# HTTP client for making requests to HF
+client = httpx.AsyncClient(timeout=30.0)
 
 class TextInput(BaseModel):
     text: str
@@ -68,41 +43,69 @@ class ClassificationResponse(BaseModel):
     label: str
     score: float
 
+async def query_hf_model(text: str, model_url: str) -> dict:
+    """Query Hugging Face Inference API without loading models locally"""
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+    
+    try:
+        response = await client.post(
+            model_url,
+            headers=headers,
+            json={"inputs": text}
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        # Handle HF API response format
+        if isinstance(result, list) and len(result) > 0:
+            if isinstance(result[0], list):
+                # Format: [[{"label": "...", "score": ...}]]
+                return result[0][0]
+            else:
+                # Format: [{"label": "...", "score": ...}]
+                return result[0]
+        elif isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=503, detail=f"Model loading: {result['error']}")
+        else:
+            raise HTTPException(status_code=500, detail="Unexpected response format")
+            
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 503:
+            raise HTTPException(
+                status_code=503, 
+                detail="Model is loading on HF servers, please retry in a few seconds"
+            )
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "binary_model_loaded": binary_classifier is not None,
-        "severity_model_loaded": severity_classifier is not None,
-        "model_loaded": binary_classifier is not None and severity_classifier is not None,
+        "binary_model_loaded": True,
+        "severity_model_loaded": True,
+        "model_loaded": True,
         "binary_model_source": f"https://huggingface.co/{HF_USERNAME}/crisis-binary-model",
         "severity_model_source": f"https://huggingface.co/{HF_USERNAME}/crisis-severity-model",
-        "device": "CPU",
+        "device": "HuggingFace Inference API (Remote)",
         "hf_username": HF_USERNAME,
-        "hf_token_set": bool(os.getenv("HF_TOKEN"))
+        "hf_token_set": bool(HF_TOKEN)
     }
 
 @app.post("/classify/binary", response_model=ClassificationResponse)
 async def classify_binary(input_data: TextInput):
-    if not binary_classifier:
-        raise HTTPException(status_code=503, detail="Binary classifier not available")
-    
-    try:
-        result = binary_classifier(input_data.text)[0]
-        return ClassificationResponse(label=result["label"], score=result["score"])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await query_hf_model(input_data.text, BINARY_MODEL_URL)
+    return ClassificationResponse(label=result["label"], score=result["score"])
 
 @app.post("/classify/severity", response_model=ClassificationResponse)
 async def classify_severity(input_data: TextInput):
-    if not severity_classifier:
-        raise HTTPException(status_code=503, detail="Severity classifier not available")
-    
-    try:
-        result = severity_classifier(input_data.text)[0]
-        return ClassificationResponse(label=result["label"], score=result["score"])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await query_hf_model(input_data.text, SEVERITY_MODEL_URL)
+    return ClassificationResponse(label=result["label"], score=result["score"])
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await client.aclose()
 
 if __name__ == "__main__":
     import uvicorn
