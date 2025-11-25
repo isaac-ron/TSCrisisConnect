@@ -6,6 +6,8 @@ import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
 import socialMediaRoutes from './routes/social-media.js';
 import debugRoutes from './routes/debug.js';
+import messagesRoutes from './routes/messages.js';
+import firstRespondersRoutes from './routes/first-responders.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -39,6 +41,8 @@ app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
 app.use('/social', socialMediaRoutes);
 app.use('/debug', debugRoutes);
+app.use('/messages', messagesRoutes);
+app.use('/first-responders', firstRespondersRoutes);
 
 // Start servercd server
 //npx prisma generate

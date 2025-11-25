@@ -42,6 +42,10 @@ model Report {
   latitude          Float?
   longitude         Float?
   isVerified        Boolean  @default(false)
+  
+  // First responder assignment
+  assignedResponderId Int?
+  assignedResponder   FirstResponder? @relation("ResponderToReport", fields: [assignedResponderId], references: [id])
 }
 
 model Message {
@@ -51,6 +55,17 @@ model Message {
   timestamp DateTime @default(now())
   sender    User     @relation(fields: [senderId], references: [id])
   senderId  Int
+  
+  // NLP insights from ML service
+  isCrisis       Boolean? @default(false)
+  severity       String?  // "Low", "Medium", "High", "Critical"
+  crisisType     String?  // extracted crisis category
+  confidence     Float?   // ML model confidence score
+  entities       String?  // JSON string of extracted entities (locations, people, etc)
+  
+  // First responder assignment
+  assignedResponderId Int?
+  assignedResponder   FirstResponder? @relation(fields: [assignedResponderId], references: [id])
 }
 
 model SocialAlert {
@@ -67,4 +82,19 @@ model SocialAlert {
   severity          String?
   latitude          Float?
   longitude         Float?
+}
+
+model FirstResponder {
+  id          Int       @id @default(autoincrement())
+  name        String
+  badgeNumber String    @unique
+  department  String    // "Fire", "Police", "Medical", "Emergency Management"
+  phoneNumber String    // Direct contact number
+  email       String?   @unique
+  status      String    @default("available") // "available", "on-duty", "off-duty"
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  assignedMessages Message[]
+  assignedReports  Report[] @relation("ResponderToReport")
 }

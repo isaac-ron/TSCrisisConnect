@@ -3,8 +3,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { AlertTriangle, Clock, MapPin, Info } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
+import { FirstResponderCard } from '../ui/first-responder-card';
 
 // Define the structure of a report to match the backend data
+interface FirstResponder {
+  id: number;
+  name: string;
+  department: string;
+  phoneNumber: string;
+  badgeNumber: string;
+}
+
 interface Report {
   id: number;
   description: string;
@@ -13,6 +22,9 @@ interface Report {
   timestamp: string;
   severity: string | null;
   extractedLocation: string | null;
+  crisisType: string | null;
+  confidence: number | null;
+  assignedResponder?: FirstResponder | null;
 }
 
 // Helper function to format how long ago a report was made
@@ -135,23 +147,50 @@ export function AlertFeed() {
     <div className="space-y-4 p-4">
       <h1 className="text-2xl font-bold">Live Alert Feed</h1>
       {reports.map((report) => (
-        <Card key={report.id} className="overflow-hidden">
+        <Card key={report.id} className="overflow-hidden border-l-4" style={{
+          borderLeftColor: report.severity === 'Critical' ? '#dc2626' : 
+                          report.severity === 'High' ? '#f97316' :
+                          report.severity === 'Medium' ? '#facc15' : '#3b82f6'
+        }}>
           <CardHeader>
             <div className="flex justify-between items-start">
-              <CardTitle className="text-lg font-semibold leading-tight">{report.description}</CardTitle>
-              <Badge className={getSeverityBadgeClass(report.severity)}>
-                {report.severity || 'Unknown'}
-              </Badge>
+              <div className="flex-1">
+                <CardTitle className="text-lg font-semibold leading-tight mb-2">{report.description}</CardTitle>
+                <div className="flex gap-2 flex-wrap">
+                  <Badge className={getSeverityBadgeClass(report.severity)}>
+                    {report.severity || 'Unknown'}
+                  </Badge>
+                  {report.crisisType && (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      {report.crisisType}
+                    </Badge>
+                  )}
+                  {report.confidence && (
+                    <Badge variant="outline" className="bg-gray-50 text-gray-700">
+                      {Math.round(report.confidence * 100)}% confidence
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center text-sm text-muted-foreground mb-2">
-              <MapPin className="w-4 h-4 mr-2" />
-              Location: {report.extractedLocation || report.location || 'Not specified'}
-            </div>
-            <div className="flex items-center text-sm text-muted-foreground">
-              <Clock className="w-4 h-4 mr-2" />
-              Reported: {timeSince(new Date(report.timestamp))}
+            <div className="space-y-2">
+              <div className="flex items-center text-sm text-muted-foreground">
+                <MapPin className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span>{report.extractedLocation || report.location || 'Not specified'}</span>
+              </div>
+              <div className="flex items-center text-sm text-muted-foreground">
+                <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span>Reported {timeSince(new Date(report.timestamp))}</span>
+              </div>
+              
+              {/* First Responder Contact Card */}
+              {report.assignedResponder && (
+                <div className="mt-4">
+                  <FirstResponderCard responder={report.assignedResponder} compact />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
