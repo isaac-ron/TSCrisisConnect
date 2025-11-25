@@ -214,7 +214,13 @@ export async function classifyCrisisBinary(text) {
     }
     
     const result = await response.json();
-    return { isCrisis: result.is_crisis, confidence: result.confidence };
+    // Handle both old format (is_crisis/confidence) and new HF API format (label/score)
+    const isCrisis = result.is_crisis !== undefined 
+      ? result.is_crisis 
+      : (result.label === "crisis" || result.label === "LABEL_1");
+    const confidence = result.confidence !== undefined ? result.confidence : result.score;
+    
+    return { isCrisis, confidence };
   } catch (err) {
     console.error('[LocalModel] ❌ classifyCrisisBinary failed:', err.message);
     throw err;
@@ -240,8 +246,9 @@ export async function classifySeverity(text) {
     }
     
     const result = await response.json();
-    // Normalize the severity label from the model
-    let severity = result.severity;
+    // Handle both old format (severity) and new HF API format (label)
+    let severity = result.severity || result.label;
+    const confidence = result.confidence !== undefined ? result.confidence : result.score;
     const label = severity.toLowerCase();
     
     if (label.includes('low') || label.includes('0')) severity = 'Low';
@@ -249,7 +256,7 @@ export async function classifySeverity(text) {
     else if (label.includes('high') || label.includes('2')) severity = 'High';
     else if (label.includes('medium') || label.includes('1')) severity = 'Medium';
     
-    return { severity, confidence: result.confidence };
+    return { severity, confidence };
   } catch (err) {
     console.error('[LocalModel] ❌ classifySeverity failed:', err.message);
     throw err;
