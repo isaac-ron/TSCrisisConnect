@@ -35,7 +35,7 @@ export async function loadCrisisClassifier() {
     console.log(`[LocalModel] 🔍 Attempting to connect to ML service at ${ML_SERVICE_URL}...`);
     
     const healthResponse = await fetch(`${ML_SERVICE_URL}/health`, { 
-      signal: AbortSignal.timeout(10000) // 10 second timeout for Render cold starts
+      signal: AbortSignal.timeout(30000) // 30 second timeout for HF Inference API cold starts
     });
     
     console.log(`[LocalModel] 📡 Health check response status: ${healthResponse.status}`);
@@ -202,11 +202,12 @@ export async function loadSeverityModel() {
 export async function classifyCrisisBinary(text) {
   try {
     const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    // Increase timeout to 30s for HF Inference API cold starts
     const response = await fetch(`${ML_SERVICE_URL}/classify/binary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(30000)
     });
     
     if (!response.ok) {
@@ -234,11 +235,12 @@ export async function classifyCrisisBinary(text) {
 export async function classifySeverity(text) {
   try {
     const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+    // Increase timeout to 30s for HF Inference API cold starts
     const response = await fetch(`${ML_SERVICE_URL}/classify/severity`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(30000)
     });
     
     if (!response.ok) {
