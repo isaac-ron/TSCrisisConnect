@@ -64,9 +64,11 @@ def query_hf_model(text: str, model_id: str) -> dict:
             elif isinstance(top_result, dict):
                  return {"label": top_result["label"], "score": top_result["score"]}
 
+        print(f" Unexpected response format: {type(result)} - {result}")
         raise HTTPException(status_code=500, detail=f"Unexpected response format: {type(result)}")
             
     except Exception as e:
+        print(f" Error querying HF: {repr(e)}")
         error_msg = str(e).lower()
         if "503" in error_msg or "loading" in error_msg:
             raise HTTPException(
@@ -78,7 +80,7 @@ def query_hf_model(text: str, model_id: str) -> dict:
                 status_code=404,
                 detail=f"Model {model_id} not found or not accessible"
             )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Internal Error: {repr(e)}")
 
 @app.get("/health")
 async def health_check():
