@@ -18,32 +18,9 @@ dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 const app = express();
 const prisma = new PrismaClient();
 
-// CORS configuration for production
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://crisisconnect-frontend.onrender.com',
-  process.env.FRONTEND_URL,
-].filter(Boolean);
-
+// CORS configuration for production - allow all origins temporarily for debugging
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Allow all onrender.com subdomains in development
-    if (origin.endsWith('.onrender.com')) {
-      return callback(null, true);
-    }
-    
-    // Check against allowlist
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    
-    console.warn(`⚠️ CORS blocked origin: ${origin}`);
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: true,
   credentials: true,
 }));
 
