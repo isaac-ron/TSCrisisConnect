@@ -34,14 +34,24 @@ export function Messages() {
   const manualSync = async () => {
     setSyncing(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token') || localStorage.getItem('cc_token');
       if (!token) {
         alert('Please log in to sync messages');
+        setSyncing(false);
         return;
       }
 
       const messages = await getAllMessages();
       const unsynced = messages.filter((m) => !m.synced);
+
+      if (unsynced.length === 0) {
+        alert('No pending messages to sync');
+        setSyncing(false);
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
 
       for (const msg of unsynced) {
         try {
@@ -58,12 +68,15 @@ export function Messages() {
           if (response.ok) {
             await markMessageSynced(msg.id);
             console.log(`[Manual Sync] ✅ Synced message ${msg.id}`);
+            successCount++;
           } else {
             const errorText = await response.text();
             console.error(`[Manual Sync] ❌ Failed: ${response.status} - ${errorText}`);
+            failCount++;
           }
         } catch (error) {
           console.error(`[Manual Sync] ❌ Error:`, error);
+          failCount++;
         }
       }
 
@@ -71,6 +84,18 @@ export function Messages() {
       const all = await getAllMessages();
       setSentMessages(all.filter((m) => m.synced));
       setPendingMessages(all.filter((m) => !m.synced));
+
+      // Show result to user
+      if (successCount > 0 && failCount === 0) {
+        alert(`✅ Successfully synced ${successCount} message(s)`);
+      } else if (successCount > 0 && failCount > 0) {
+        alert(`⚠️ Synced ${successCount} message(s), ${failCount} failed`);
+      } else {
+        alert(`❌ Failed to sync messages. Check console for details.`);
+      }
+    } catch (error) {
+      console.error('[Manual Sync] Unexpected error:', error);
+      alert('Sync failed. Please try again.');
     } finally {
       setSyncing(false);
     }
