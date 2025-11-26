@@ -73,9 +73,10 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
       
       if (isOnline) {
         try {
-          const token = localStorage.getItem('token');
+          const token = localStorage.getItem('cc_token') || localStorage.getItem('token');
           console.log('🌐 [ComposeMessage] Attempting POST to /reports...');
           console.log('🔑 [ComposeMessage] Auth token:', token ? 'Present' : 'Missing');
+          console.log('🌐 [ComposeMessage] API URL:', `${API_BASE_URL}/reports`);
           
           const response = await fetch(`${API_BASE_URL}/reports`, {
             method: 'POST',
