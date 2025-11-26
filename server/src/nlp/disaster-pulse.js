@@ -179,7 +179,10 @@ async function detectCrisisCandidate(text) {
       return { isCrisis, confidence: Math.max(confidence, mlConfidence, 0.5) };
     } catch (error) {
       console.warn('[DisasterPulse] ⚠️  ML classification failed, using heuristic result');
-      // Public fallback disabled to prevent RAM exhaustion on Render free tier
+      if (!usePublicFallback) {
+        console.warn('[DisasterPulse] 🔁 Switching to public fallback models');
+        usePublicFallback = true;
+      }
     }
   }
   
@@ -222,9 +225,16 @@ async function classifyCrisisTypeDynamic(text) {
     'missing person', 'search and rescue', 'evacuation', 'emergency situation'
   ];
   
-  // Zero-shot classification disabled to prevent RAM exhaustion on Render
-  console.log('[DisasterPulse] Using keyword-based crisis type detection');
-  return inferCrisisTypeFromKeywords(text);
+  try {
+    const result = await classifyZeroShot(text, crisisCategories);
+    return {
+      crisisType: result.label,
+      confidence: result.score
+    };
+  } catch (error) {
+    console.warn('[DisasterPulse] ⚠️  Zero-shot classification failed, using keyword fallback');
+    return inferCrisisTypeFromKeywords(text);
+  }
 }
 
 /**
@@ -336,8 +346,29 @@ function assessSeverityDynamic(text, crisisType) {
  * Extracts location information using NER model with public fallback.
  */
 async function extractLocationLocal(text) {
-  console.log('[DisasterPulse] 📍 Location extraction disabled (RAM optimization)');
-  // NER model disabled to prevent RAM exhaustion on Render free tier
+  console.log('[DisasterPulse] 📍 Extracting location...');
+
+  try {
+    const entities = await extractEntitiesLocal(text);
+    const location = selectLocationFromEntities(entities);
+    if (location) {
+      console.log(`[DisasterPulse] 📍 Local NER detected location: ${location}`);
+      return { extractedLocation: location, source: 'local-ner' };
+    }
+  } catch (error) {
+    console.warn('[DisasterPulse] ⚠️ Local NER unavailable:', error.message);
+  }
+
+  try {
+    const fallbackLocation = await extractLocationPublic(text);
+    if (fallbackLocation) {
+      return { extractedLocation: fallbackLocation, source: 'public-ner' };
+    }
+  } catch (error) {
+    console.error('[DisasterPulse] ❌ Public NER fallback failed:', error.message);
+  }
+
+  console.log('[DisasterPulse] ⚠️ No location extracted');
   return { extractedLocation: null };
 }
 
@@ -347,4 +378,72 @@ async function extractLocationLocal(text) {
 async function geocodeLocation(locationText) {
   console.log(`[DisasterPulse] 🗺️  Geocoding: "${locationText}"`);
   return await geocodeWithService(locationText, 'nominatim'); // Use Nominatim by default
+}
+
+function selectLocationFromEntities(entities) {
+  if (!Array.isArray(entities) || entities.length === 0) {
+    return null;
+  }
+
+  const acceptedLabels = ['LOC', 'GPE', 'B-LOC', 'I-LOC', 'B-GPE', 'I-GPE', 'ORG', 'B-ORG', 'I-ORG', 'FAC', 'B-FAC', 'I-FAC', 'PLACE'];
+
+  const filtered = entities.filter((entity) => {
+    const label = (entity.entity_group || entity.entity || '').toUpperCase();
+    return acceptedLabels.some((accepted) => label.includes(accepted));
+  });
+
+  if (filtered.length === 0) {
+    return null;
+  }
+
+  filtered.sort((a, b) => {
+    const aIndex = a.index ?? a.start ?? 0;
+    const bIndex = b.index ?? b.start ?? 0;
+    return aIndex - bIndex;
+  });
+
+  const chunks = [];
+  let currentChunk = [];
+  let previousIndex = null;
+
+  for (const token of filtered) {
+    const currentIndex = token.index ?? token.start ?? 0;
+    if (currentChunk.length === 0 || currentIndex === previousIndex + 1) {
+      currentChunk.push(token);
+    } else {
+      chunks.push(currentChunk);
+      currentChunk = [token];
+    }
+    previousIndex = currentIndex;
+  }
+  if (currentChunk.length) {
+    chunks.push(currentChunk);
+  }
+
+  const candidates = chunks
+    .map((chunk) => {
+      const text = chunk
+        .map((token, idx) => {
+          const word = token.word || token.text || '';
+          if (!word) return '';
+          if (word.startsWith('##')) {
+            return word.slice(2);
+          }
+          return (idx === 0 ? '' : ' ') + word;
+        })
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const score = chunk.reduce((sum, token) => sum + (token.score || 0), 0) / chunk.length;
+      return { text, score };
+    })
+    .filter((candidate) => candidate.text.length > 0);
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => b.score - a.score || b.text.length - a.text.length);
+  return candidates[0].text;
 }
