@@ -179,10 +179,7 @@ async function detectCrisisCandidate(text) {
       return { isCrisis, confidence: Math.max(confidence, mlConfidence, 0.5) };
     } catch (error) {
       console.warn('[DisasterPulse] ⚠️  ML classification failed, using heuristic result');
-      if (!usePublicFallback) {
-        console.warn('[DisasterPulse] 🔁 Switching to public fallback models for future requests');
-        usePublicFallback = true;
-      }
+      // Public fallback disabled to prevent RAM exhaustion on Render free tier
     }
   }
   
@@ -225,19 +222,9 @@ async function classifyCrisisTypeDynamic(text) {
     'missing person', 'search and rescue', 'evacuation', 'emergency situation'
   ];
   
-  try {
-    // Use zero-shot classification to determine the most likely crisis type
-    const result = await classifyZeroShot(text, crisisCategories);
-    
-    return {
-      crisisType: result.label,
-      confidence: result.score
-    };
-  } catch (error) {
-    console.warn('[DisasterPulse] ⚠️  Zero-shot classification failed, using keyword fallback');
-    // Fallback to keyword-based detection
-    return inferCrisisTypeFromKeywords(text);
-  }
+  // Zero-shot classification disabled to prevent RAM exhaustion on Render
+  console.log('[DisasterPulse] Using keyword-based crisis type detection');
+  return inferCrisisTypeFromKeywords(text);
 }
 
 /**
@@ -246,23 +233,44 @@ async function classifyCrisisTypeDynamic(text) {
 function inferCrisisTypeFromKeywords(text) {
   const lowerText = text.toLowerCase();
   
+  // Order matters: specific patterns first, generic patterns last
   const patterns = [
-    { regex: /earthquake|tremor|shake|seismic|quake/i, type: 'earthquake', confidence: 0.9 },
-    { regex: /fire|wildfire|blaze|burning|flames/i, type: 'fire', confidence: 0.9 },
-    { regex: /flood|flooding|water rising|river overflow|inundation/i, type: 'flood', confidence: 0.9 },
+    // Specific multi-word patterns first
+    { regex: /active\s+shooter|mass\s+shooting/i, type: 'active shooter', confidence: 0.95 },
+    { regex: /plane\s+crash|aircraft\s+(crash|down)/i, type: 'plane crash', confidence: 0.95 },
+    { regex: /train\s+(derail|crash)/i, type: 'train derailment', confidence: 0.9 },
+    { regex: /building\s+(collaps|fail)|structure\s+fail/i, type: 'building collapse', confidence: 0.9 },
+    { regex: /gas\s+leak|chemical\s+spill/i, type: 'gas leak', confidence: 0.85 },
+    { regex: /water\s+rising|river\s+overflow|flash\s+flood/i, type: 'flood', confidence: 0.9 },
+    { regex: /hostage\s+situation|kidnap(ping)?/i, type: 'hostage situation', confidence: 0.9 },
+    
+    // Natural disasters
+    { regex: /wildfire/i, type: 'wildfire', confidence: 0.95 },
+    { regex: /earthquake|seismic|tremor|quake/i, type: 'earthquake', confidence: 0.9 },
+    { regex: /\bfire\b|blaze|burning|flames|inferno/i, type: 'fire', confidence: 0.85 },
+    { regex: /flood(ing)?|inundation/i, type: 'flood', confidence: 0.9 },
     { regex: /hurricane|typhoon|cyclone/i, type: 'hurricane', confidence: 0.95 },
     { regex: /tornado|twister/i, type: 'tornado', confidence: 0.95 },
-    { regex: /shoot|shooter|gunfire|gunman|active shooter|gunshots/i, type: 'shooting', confidence: 0.85 },
-    { regex: /bomb|bombing|explosive|ied|detonation/i, type: 'bombing', confidence: 0.85 },
-    { regex: /explosion|explode|blast/i, type: 'explosion', confidence: 0.85 },
-    { regex: /crash|collision|accident|pile-?up/i, type: 'vehicle crash', confidence: 0.8 },
-    { regex: /derail|train.*crash/i, type: 'train derailment', confidence: 0.9 },
-    { regex: /outbreak|epidemic|pandemic|virus|disease|infection/i, type: 'disease outbreak', confidence: 0.85 },
-    { regex: /riot|looting|civil unrest|mob/i, type: 'riot', confidence: 0.8 },
-    { regex: /building.*collaps|structure.*fail/i, type: 'building collapse', confidence: 0.9 },
-    { regex: /gas.*leak|chemical.*spill|toxic/i, type: 'gas leak', confidence: 0.85 },
-    { regex: /hostage|kidnap/i, type: 'hostage situation', confidence: 0.9 },
-    { regex: /plane.*crash|aircraft.*down/i, type: 'plane crash', confidence: 0.95 },
+    { regex: /tsunami/i, type: 'tsunami', confidence: 0.95 },
+    { regex: /landslide|mudslide|avalanche/i, type: 'landslide', confidence: 0.9 },
+    
+    // Violence & attacks
+    { regex: /\bshoot(ing)?\b|gunfire|gunshots|gunman/i, type: 'shooting', confidence: 0.85 },
+    { regex: /\bbomb(ing)?\b|explosive|ied|detonation/i, type: 'bombing', confidence: 0.85 },
+    { regex: /explosion|explode|blast/i, type: 'explosion', confidence: 0.8 },
+    { regex: /terror(ist)?\s+attack/i, type: 'terrorist attack', confidence: 0.9 },
+    
+    // Accidents
+    { regex: /\bcrash|collision|pile-?up/i, type: 'vehicle accident', confidence: 0.75 },
+    { regex: /\baccident\b/i, type: 'accident', confidence: 0.7 },
+    
+    // Health emergencies
+    { regex: /outbreak|epidemic|pandemic/i, type: 'disease outbreak', confidence: 0.85 },
+    { regex: /virus|disease|infection/i, type: 'health emergency', confidence: 0.7 },
+    
+    // Civil unrest
+    { regex: /riot(ing)?|looting|civil\s+unrest|mob/i, type: 'civil unrest', confidence: 0.8 },
+    { regex: /protest/i, type: 'protest', confidence: 0.6 },
   ];
   
   for (const pattern of patterns) {
@@ -328,17 +336,9 @@ function assessSeverityDynamic(text, crisisType) {
  * Extracts location information using NER model with public fallback.
  */
 async function extractLocationLocal(text) {
-  console.log('[DisasterPulse] 📍 Extracting location...');
-  
-  try {
-    const location = await extractLocationPublic(text);
-    console.log(`[DisasterPulse] Location: "${location || 'None'}"`);
-    return { extractedLocation: location };
-    
-  } catch (error) {
-    console.error('[DisasterPulse] ❌ Location extraction error:', error);
-    return { extractedLocation: null };
-  }
+  console.log('[DisasterPulse] 📍 Location extraction disabled (RAM optimization)');
+  // NER model disabled to prevent RAM exhaustion on Render free tier
+  return { extractedLocation: null };
 }
 
 /**
