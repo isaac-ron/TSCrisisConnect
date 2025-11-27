@@ -23,13 +23,13 @@ interface FirstResponderDashboardProps {
 
 interface Report {
   id: string;
-  text: string;
+  description: string;
   latitude?: number;
   longitude?: number;
   crisisType?: string;
   severity?: string;
   isCrisis?: boolean;
-  createdAt: string;
+  timestamp: string;
   userId?: string;
   user?: {
     name?: string;
@@ -56,24 +56,35 @@ export function FirstResponderDashboard({
   }, []);
 
   const fetchReports = async () => {
+    console.log('🔄 Starting fetchReports...');
     try {
-      const response = await fetch('http://localhost:3000/reports');
+      const response = await fetch('/reports');
+      console.log('📡 Response received:', response.status, response.statusText);
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Fetched reports:', data.length, 'reports');
+        console.log('📋 Sample report:', data[0]);
+        console.log('📊 All reports:', data);
         setReports(data);
+      } else {
+        console.error('❌ Failed to fetch reports:', response.status, response.statusText);
       }
     } catch (error) {
-      console.error('Failed to fetch reports:', error);
+      console.error('💥 Fetch error:', error);
     } finally {
       setLoading(false);
     }
   };
 
   // Filter crisis reports
-  const crisisReports = reports.filter(r => r.isCrisis);
-  const criticalReports = crisisReports.filter(r => r.severity === 'Critical');
+  const crisisReports = reports.filter(r => r.crisisType && r.crisisType !== 'none');
+  const criticalReports = crisisReports.filter(r => r.severity?.toLowerCase() === 'critical' || r.severity?.toLowerCase() === 'high');
   const activeAlerts = crisisReports.slice(0, 10); // Most recent crisis reports
   const userMessages = reports.slice(0, 20); // All recent reports
+
+  console.log('Total reports:', reports.length);
+  console.log('Crisis reports:', crisisReports.length);
+  console.log('Critical reports:', criticalReports.length);
 
   const getTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
@@ -255,10 +266,10 @@ export function FirstResponderDashboard({
                             {report.crisisType || 'Crisis'}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {report.text.substring(0, 80)}...
+                            {report.description?.substring(0, 80) || 'No description'}...
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {getTimeAgo(report.createdAt)}
+                            {getTimeAgo(report.timestamp)}
                           </p>
                         </div>
                       </div>
@@ -310,10 +321,10 @@ export function FirstResponderDashboard({
                           </p>
                         )}
                         <p className="text-sm">
-                          {report.text.substring(0, 100)}{report.text.length > 100 ? '...' : ''}
+                          {report.description?.substring(0, 100) || 'No description'}{(report.description?.length || 0) > 100 ? '...' : ''}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {getTimeAgo(report.createdAt)}
+                          {getTimeAgo(report.timestamp)}
                         </p>
                       </div>
                     ))
@@ -349,14 +360,14 @@ export function FirstResponderDashboard({
                         </div>
                         <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {getTimeAgo(report.createdAt)}
+                          {getTimeAgo(report.timestamp)}
                         </div>
                       </div>
                       <h3 className="font-medium mb-2">
                         {report.crisisType || 'Emergency Report'}
                       </h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        {report.text}
+                        {report.description || 'No description'}
                       </p>
                       {report.latitude && report.longitude && (
                         <p className="text-sm text-muted-foreground mb-3">
@@ -421,7 +432,7 @@ export function FirstResponderDashboard({
                         </div>
                         <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {getTimeAgo(report.createdAt)}
+                          {getTimeAgo(report.timestamp)}
                         </div>
                       </div>
                       {report.latitude && report.longitude && (
@@ -431,7 +442,7 @@ export function FirstResponderDashboard({
                         </p>
                       )}
                       <p className="text-sm mb-3">
-                        {report.text}
+                        {report.description || 'No description'}
                       </p>
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline">

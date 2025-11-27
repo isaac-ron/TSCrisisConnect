@@ -143,8 +143,18 @@ router.post("/", optionalAuth, async (req, res) => {
 
 // Get all reports
 router.get("/", async (req, res) => {
-  const reports = await prisma.report.findMany({ include: { user: true } });
-  res.json(reports);
+  try {
+    console.log('📡 [GET /reports] Fetching all reports from database...');
+    const reports = await prisma.report.findMany({ 
+      include: { user: true },
+      orderBy: { timestamp: 'desc' }
+    });
+    console.log('✅ [GET /reports] Found', reports.length, 'reports');
+    res.json(reports);
+  } catch (error) {
+    console.error('❌ [GET /reports] Database error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch reports', details: error.message });
+  }
 });
 
 export default router;
