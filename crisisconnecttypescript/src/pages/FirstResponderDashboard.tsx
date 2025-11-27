@@ -57,7 +57,7 @@ export function FirstResponderDashboard({
 
   const fetchReports = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/reports');
+      const response = await fetch('http://localhost:3000/reports');
       if (response.ok) {
         const data = await response.json();
         setReports(data);
