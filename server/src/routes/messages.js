@@ -1,6 +1,6 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
-import { optionalAuth } from "../middleware/authMiddleware.js";
+import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -8,17 +8,13 @@ const prisma = new PrismaClient();
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 // Create a new message with NLP analysis
-router.post("/", optionalAuth, async (req, res) => {
+router.post("/", authenticate, async (req, res) => {
   try {
     const { content, type = "general" } = req.body;
-    const senderId = req.user?.id;
+    const senderId = req.user.id;
 
     if (!content) {
       return res.status(400).json({ error: "Message content is required" });
-    }
-
-    if (!senderId) {
-      return res.status(401).json({ error: "Authentication required" });
     }
 
     let isCrisis = false;
@@ -102,7 +98,7 @@ router.post("/", optionalAuth, async (req, res) => {
 });
 
 // Get all messages with NLP insights
-router.get("/", optionalAuth, async (req, res) => {
+router.get("/", authenticate, authorize("first-responder", "admin"), async (req, res) => {
   try {
     const messages = await prisma.message.findMany({
       include: {
@@ -136,7 +132,7 @@ router.get("/", optionalAuth, async (req, res) => {
 });
 
 // Get crisis messages only
-router.get("/crisis", optionalAuth, async (req, res) => {
+router.get("/crisis", authenticate, authorize("first-responder", "admin"), async (req, res) => {
   try {
     const crisisMessages = await prisma.message.findMany({
       where: {
@@ -173,7 +169,7 @@ router.get("/crisis", optionalAuth, async (req, res) => {
 });
 
 // Assign a first responder to a message
-router.patch("/:id/assign", optionalAuth, async (req, res) => {
+router.patch("/:id/assign", authenticate, authorize("first-responder", "admin"), async (req, res) => {
   try {
     const { id } = req.params;
     const { responderId } = req.body;
@@ -184,7 +180,14 @@ router.patch("/:id/assign", optionalAuth, async (req, res) => {
         assignedResponderId: responderId ? parseInt(responderId) : null,
       },
       include: {
-        sender: true,
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          }
+        },
         assignedResponder: true,
       }
     });

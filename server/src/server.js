@@ -1,28 +1,22 @@
-import dotenv from 'dotenv';
+import { ALLOWED_ORIGINS, IS_PRODUCTION } from './config.js';
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
 import socialMediaRoutes from './routes/social-media.js';
 import debugRoutes from './routes/debug.js';
 import messagesRoutes from './routes/messages.js';
 import firstRespondersRoutes from './routes/first-responders.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../.env'), override: true });
 
 const app = express();
-const prisma = new PrismaClient();
 
-// CORS configuration for production - allow all origins temporarily for debugging
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
+// Render terminates TLS at a proxy; trust it so req.ip (used for rate limiting) is the client IP
+if (IS_PRODUCTION) {
+  app.set('trust proxy', 1);
+}
+
+// Auth uses bearer tokens, not cookies, so credentials are not needed
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 
 // Increase limit to handle base64 encoded images (10MB limit)
 app.use(express.json({ limit: '10mb' }));
@@ -33,12 +27,12 @@ app.get('/', (req, res) => res.send('CrisisConnect API is running'));
 app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
 app.use('/social', socialMediaRoutes);
-app.use('/debug', debugRoutes);
 app.use('/messages', messagesRoutes);
 app.use('/first-responders', firstRespondersRoutes);
 
-// Start servercd server
-//npx prisma generate
+if (!IS_PRODUCTION) {
+  app.use('/debug', debugRoutes);
+}
 
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, '0.0.0.0', () => {

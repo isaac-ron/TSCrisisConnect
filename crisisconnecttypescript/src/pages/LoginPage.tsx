@@ -35,8 +35,6 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
   // First responder state
   const [badgeId, setBadgeId] = useState('');
   const [responderPassword, setResponderPassword] = useState('');
-  const [responderName, setResponderName] = useState('');
-  const [responderConfirmPassword, setResponderConfirmPassword] = useState('');
   const [showResponderPassword, setShowResponderPassword] = useState(false);
   const [responderError, setResponderError] = useState('');
   const [responderLoading, setResponderLoading] = useState(false);
@@ -111,54 +109,6 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
       setCommunityError(message);
     } finally {
       setCommunityLoading(false);
-    }
-  };
-
-  const handleResponderRegister = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setResponderError('');
-
-    if (responderPassword !== responderConfirmPassword) {
-      setResponderError('Passwords do not match');
-      return;
-    }
-
-    if (responderPassword.length < 6) {
-      setResponderError('Password must be at least 6 characters');
-      return;
-    }
-
-    setResponderLoading(true);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: `${badgeId.trim().toLowerCase()}@responder.local`,
-          password: responderPassword,
-          name: responderName,
-          role: 'first-responder',
-          badgeId: badgeId.trim().toUpperCase(),
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Unable to create responder account.');
-      }
-
-      if (!result.token || !result.user) {
-        throw new Error('Unexpected response from server.');
-      }
-
-      await onResponderLogin(result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
-      setResponderError(message);
-    } finally {
-      setResponderLoading(false);
     }
   };
 
@@ -264,13 +214,13 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
                 <Lock className="w-5 h-5 text-destructive" />
                 {activeTab === 'community' 
                   ? (showRegister ? 'Create Community Account' : 'Community Member Login')
-                  : (showRegister ? 'Register as First Responder' : 'First Responder Login')
+                  : 'First Responder Login'
                 }
               </CardTitle>
               <CardDescription>
                 {activeTab === 'community' 
                   ? (showRegister ? 'Create an account to report emergencies and receive alerts.' : 'Sign in to send emergency messages, track alerts, and sync offline activity.')
-                  : (showRegister ? 'Register verified emergency personnel account.' : 'Secure access for verified emergency personnel.')
+                  : 'Secure access for verified emergency personnel.'
                 }
               </CardDescription>
             </CardHeader>
@@ -391,146 +341,62 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
               </TabsContent>
 
               <TabsContent value="responder" className="mt-0">
-                {showRegister ? (
-                  <form className="space-y-4" onSubmit={handleResponderRegister}>
-                    <div className="space-y-2">
-                      <label htmlFor="resp-reg-name" className="text-sm font-medium">Full Name</label>
+                <form className="space-y-4" onSubmit={handleResponderLogin}>
+                  <div className="space-y-2">
+                    <label htmlFor="badgeId" className="text-sm font-medium">Badge ID</label>
+                    <Input
+                      id="badgeId"
+                      type="text"
+                      placeholder="FR001"
+                      value={badgeId}
+                      onChange={(event) => setBadgeId(event.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="responderPassword" className="text-sm font-medium">Password</label>
+                    <div className="relative">
                       <Input
-                        id="resp-reg-name"
-                        type="text"
-                        placeholder="Officer Jane Smith"
-                        value={responderName}
-                        onChange={(event) => setResponderName(event.target.value)}
+                        id="responderPassword"
+                        type={showResponderPassword ? 'text' : 'password'}
+                        placeholder="emergency123"
+                        value={responderPassword}
+                        onChange={(event) => setResponderPassword(event.target.value)}
                         required
                       />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowResponderPassword(!showResponderPassword)}
+                      >
+                        {showResponderPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      <label htmlFor="resp-reg-badgeId" className="text-sm font-medium">Badge ID</label>
-                      <Input
-                        id="resp-reg-badgeId"
-                        type="text"
-                        placeholder="FR001"
-                        value={badgeId}
-                        onChange={(event) => setBadgeId(event.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="resp-reg-password" className="text-sm font-medium">Password</label>
-                      <div className="relative">
-                        <Input
-                          id="resp-reg-password"
-                          type={showResponderPassword ? 'text' : 'password'}
-                          placeholder="••••••••"
-                          value={responderPassword}
-                          onChange={(event) => setResponderPassword(event.target.value)}
-                          required
-                          minLength={6}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowResponderPassword(!showResponderPassword)}
-                        >
-                          {showResponderPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="resp-reg-confirm-password" className="text-sm font-medium">Confirm Password</label>
-                      <Input
-                        id="resp-reg-confirm-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={responderConfirmPassword}
-                        onChange={(event) => setResponderConfirmPassword(event.target.value)}
-                        required
-                        minLength={6}
-                      />
-                    </div>
+                  </div>
 
-                    {responderError && (
-                      <Alert variant="destructive">
-                        <AlertDescription>{responderError}</AlertDescription>
-                      </Alert>
-                    )}
+                  {responderError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{responderError}</AlertDescription>
+                    </Alert>
+                  )}
 
-                    <Button type="submit" className="w-full" disabled={responderLoading}>
-                      {responderLoading ? 'Creating account…' : 'Register as First Responder'}
-                    </Button>
+                  <Button type="submit" className="w-full" disabled={responderLoading}>
+                    {responderLoading ? 'Verifying…' : 'Enter First Responder Dashboard'}
+                  </Button>
 
-                    <Button type="button" variant="ghost" className="w-full" onClick={() => {
-                      setShowRegister(false);
-                      setResponderError('');
-                      setResponderName('');
-                      setResponderConfirmPassword('');
-                    }}>
-                      Already registered? Sign in
-                    </Button>
-                  </form>
-                ) : (
-                  <form className="space-y-4" onSubmit={handleResponderLogin}>
-                    <div className="space-y-2">
-                      <label htmlFor="badgeId" className="text-sm font-medium">Badge ID</label>
-                      <Input
-                        id="badgeId"
-                        type="text"
-                        placeholder="FR001"
-                        value={badgeId}
-                        onChange={(event) => setBadgeId(event.target.value)}
-                        required
-                      />
-                    </div>
+                  <p className="text-sm text-center text-muted-foreground">
+                    Responder accounts are issued by your agency administrator.
+                  </p>
 
-                    <div className="space-y-2">
-                      <label htmlFor="responderPassword" className="text-sm font-medium">Password</label>
-                      <div className="relative">
-                        <Input
-                          id="responderPassword"
-                          type={showResponderPassword ? 'text' : 'password'}
-                          placeholder="emergency123"
-                          value={responderPassword}
-                          onChange={(event) => setResponderPassword(event.target.value)}
-                          required
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                          onClick={() => setShowResponderPassword(!showResponderPassword)}
-                        >
-                          {showResponderPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {responderError && (
-                      <Alert variant="destructive">
-                        <AlertDescription>{responderError}</AlertDescription>
-                      </Alert>
-                    )}
-
-                    <Button type="submit" className="w-full" disabled={responderLoading}>
-                      {responderLoading ? 'Verifying…' : 'Enter First Responder Dashboard'}
-                    </Button>
-
-                    <Button type="button" variant="ghost" className="w-full" onClick={() => {
-                      setShowRegister(true);
-                      setResponderError('');
-                    }}>
-                      Need an account? Register
-                    </Button>
-
-                    <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-                      <p className="font-medium text-foreground mb-1">Demo credentials</p>
-                      <p>Badge ID: <span className="font-mono">FR001</span></p>
-                      <p>Password: <span className="font-mono">emergency123</span></p>
-                    </div>
-                  </form>
-                )}
+                  <div className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground mb-1">Demo credentials</p>
+                    <p>Badge ID: <span className="font-mono">FR001</span></p>
+                    <p>Password: <span className="font-mono">emergency123</span></p>
+                  </div>
+                </form>
               </TabsContent>
             </CardContent>
           </Card>

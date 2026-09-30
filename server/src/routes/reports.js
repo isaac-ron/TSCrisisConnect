@@ -1,5 +1,6 @@
 import express from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { processTextForCrisisInfo } from "../shared/nlp-module.js";
 import { analyzeCrisisImage, analyzeMultimodalCrisis } from "../services/image-crisis-detector.js";
@@ -10,7 +11,6 @@ const prisma = new PrismaClient();
 
 const DEFAULT_REPORTER_EMAIL = process.env.DEFAULT_REPORT_EMAIL || "anonymous@crisisconnect.local";
 const DEFAULT_REPORTER_NAME = process.env.DEFAULT_REPORT_NAME || "Offline Reporter";
-const DEFAULT_REPORTER_PASSWORD_HASH = bcrypt.hashSync(process.env.DEFAULT_REPORT_PASSWORD || "offline-reporter", 10);
 let cachedDefaultUserId = null;
 
 async function getDefaultReporterUserId() {
@@ -18,13 +18,16 @@ async function getDefaultReporterUserId() {
     return cachedDefaultUserId;
   }
 
+  // The shared anonymous account must never be loggable-into, so its password is
+  // a random value that is discarded (and rotated on every server start).
+  const unusablePasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
   const reporter = await prisma.user.upsert({
     where: { email: DEFAULT_REPORTER_EMAIL },
-    update: {},
+    update: { password: unusablePasswordHash, role: "user" },
     create: {
       name: DEFAULT_REPORTER_NAME,
       email: DEFAULT_REPORTER_EMAIL,
-      password: DEFAULT_REPORTER_PASSWORD_HASH,
+      password: unusablePasswordHash,
       role: "user",
     },
   });
@@ -48,7 +51,7 @@ router.post("/", optionalAuth, async (req, res) => {
   const results = [];
   for (const msg of messages) {
     // Accept both offline and online message formats
-    const { message, category, description, location, userId, content, attachment } = msg;
+    const { message, category, description, location, content, attachment } = msg;
     // Prefer 'description' if present, else use 'message' or 'content'
     const desc = description || message || content;
 
@@ -56,7 +59,6 @@ router.post("/", optionalAuth, async (req, res) => {
       desc,
       category,
       location,
-      userId,
       hasAttachment: Boolean(attachment),
     });
     
@@ -108,8 +110,8 @@ router.post("/", optionalAuth, async (req, res) => {
         }
       }
       
-      // Use authenticated user's ID if available, then userId from request, then default reporter
-      const targetUserId = req.user?.id || userId || (await getDefaultReporterUserId());
+      // Reports are attributed to the authenticated user, never to an ID supplied in the body
+      const targetUserId = req.user?.id || (await getDefaultReporterUserId());
       console.log('👤 [POST /reports] Target user ID:', targetUserId);
       
       console.log('💾 [POST /reports] Creating report in database...');
@@ -142,11 +144,17 @@ router.post("/", optionalAuth, async (req, res) => {
 });
 
 // Get all reports
-router.get("/", async (req, res) => {
+const STAFF_ROLES = ["first-responder", "admin"];
+
+router.get("/", optionalAuth, async (req, res) => {
   try {
     console.log('📡 [GET /reports] Fetching all reports from database...');
-    const reports = await prisma.report.findMany({ 
-      include: { user: true },
+    // Reporter identity is only visible to responders/admins
+    const canSeeReporter = STAFF_ROLES.includes(req.user?.role);
+    const reports = await prisma.report.findMany({
+      include: canSeeReporter
+        ? { user: { select: { id: true, name: true, email: true } } }
+        : undefined,
       orderBy: { timestamp: 'desc' }
     });
     console.log('✅ [GET /reports] Found', reports.length, 'reports');

@@ -1,6 +1,6 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
-import { optionalAuth } from "../middleware/authMiddleware.js";
+import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -52,7 +52,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // Create a new first responder
-router.post("/", optionalAuth, async (req, res) => {
+router.post("/", authenticate, authorize("admin"), async (req, res) => {
   try {
     const { name, badgeNumber, department, phoneNumber, email, status } = req.body;
 
@@ -88,7 +88,7 @@ router.post("/", optionalAuth, async (req, res) => {
 });
 
 // Update a first responder
-router.put("/:id", optionalAuth, async (req, res) => {
+router.put("/:id", authenticate, authorize("admin"), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, badgeNumber, department, phoneNumber, email, status } = req.body;

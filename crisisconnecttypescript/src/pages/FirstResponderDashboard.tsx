@@ -5,6 +5,7 @@ import { Badge } from "../ui/badge";
 import {Tabs,TabsContent,TabsList,TabsTrigger} from "../ui/tabs";
 import { Alert, AlertDescription } from "../ui/alert";
 import type { UserProfile } from '../lib/types';
+import { API_BASE_URL, AUTH_STORAGE_KEYS } from '../lib/config';
 import {
   Shield,
   LogOut,
@@ -58,7 +59,10 @@ export function FirstResponderDashboard({
   const fetchReports = async () => {
     console.log('🔄 Starting fetchReports...');
     try {
-      const response = await fetch('/reports');
+      const token = localStorage.getItem(AUTH_STORAGE_KEYS.token);
+      const response = await fetch(`${API_BASE_URL}/reports`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       console.log('📡 Response received:', response.status, response.statusText);
       if (response.ok) {
         const data = await response.json();

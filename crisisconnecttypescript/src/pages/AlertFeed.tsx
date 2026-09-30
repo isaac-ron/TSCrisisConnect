@@ -4,6 +4,7 @@ import { Badge } from '../ui/badge';
 import { AlertTriangle, Clock, MapPin, Info } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { FirstResponderCard } from '../ui/first-responder-card';
+import { API_BASE_URL } from '../lib/config';
 
 // Define the structure of a report to match the backend data
 interface FirstResponder {
@@ -67,11 +68,7 @@ export function AlertFeed() {
   // Function to fetch reports from the backend API
   const fetchReports = async () => {
     try {
-      // Ingest new tweets first
-      await fetch('/social/ingest-tweets', { method: 'POST' });
-      
-      // Then fetch all social media alerts
-      const response = await fetch('/social/social-alerts');
+      const response = await fetch(`${API_BASE_URL}/social/social-alerts`);
       if (!response.ok) {
         throw new Error(`Failed to fetch: ${response.statusText}`);
       }

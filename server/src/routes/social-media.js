@@ -3,12 +3,14 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { mockTwitterFeed } from '../services/twitter-mock.js';
 import { analyzeTweetWithDisasterPulse } from '../nlp/disaster-pulse.js';
+import { authenticate, authorize } from '../middleware/authMiddleware.js';
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// This endpoint simulates fetching tweets, processing them, and saving them as SocialAlerts
-router.post('/ingest-tweets', async (req, res) => {
+// This endpoint simulates fetching tweets, processing them, and saving them as SocialAlerts.
+// Admin-only: each call writes to the database and runs the NLP models.
+router.post('/ingest-tweets', authenticate, authorize('admin'), async (req, res) => {
   console.log('🐦 [Ingest] Received request to ingest tweets');
   const tweets = mockTwitterFeed();
   console.log(`🐦 [Ingest] Fetched ${tweets.length} new mock tweets.`);

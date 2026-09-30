@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
@@ -42,6 +43,22 @@ async function main() {
 
   console.log('Seeded responder:', responder.email);
   console.log('Seeded community user:', communityUser.email);
+
+  // Admin accounts are only created when a password is supplied explicitly
+  if (process.env.SEED_ADMIN_PASSWORD) {
+    const adminPassword = await bcrypt.hash(process.env.SEED_ADMIN_PASSWORD, 10);
+    const admin = await prisma.user.upsert({
+      where: { email: 'admin@crisisconnect.local' },
+      update: { password: adminPassword, role: 'admin' },
+      create: {
+        name: 'Admin',
+        email: 'admin@crisisconnect.local',
+        password: adminPassword,
+        role: 'admin',
+      },
+    });
+    console.log('Seeded admin:', admin.email);
+  }
 }
 
 main()
