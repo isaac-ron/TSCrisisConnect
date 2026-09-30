@@ -42,3 +42,6 @@ venv/
 # Database
 *.db
 *.sqlite
+
+# Locally exported ONNX models (uploaded to the Hugging Face model repos, not git)
+ml-service/onnx-export/

@@ -1,26 +1,22 @@
-# Image for a Hugging Face Docker Space (free CPU tier). Also runs anywhere else with Docker.
-FROM python:3.11-slim
+# Portable image for the ML service. Render runs it natively (see render.yaml);
+# this is for local use or any Docker host.
+FROM python:3.12-slim
 
-# Spaces run the container as UID 1000
 RUN useradd -m -u 1000 user
 USER user
+# MALLOC_ARENA_MAX: glibc otherwise gives each request thread its own heap arena,
+# which added ~100 MB under concurrent load in testing
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2
 WORKDIR $HOME/app
 
-# CPU-only torch wheel: the default one bundles CUDA and is several GB
 COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-ENV BINARY_MODEL=ron4444444/crisis-binary-model \
-    SEVERITY_MODEL=ron4444444/crisis-severity-model
+# The int8 ONNX models (~130 MB each) are downloaded from the Hugging Face Hub on startup
+COPY --chown=user app.py classifier.py labels.py ./
 
-# Bake the weights into the image so a Space waking from sleep doesn't re-download them
-RUN python -c "import os; from huggingface_hub import snapshot_download; [snapshot_download(os.environ[k]) for k in ('BINARY_MODEL', 'SEVERITY_MODEL')]"
-
-COPY --chown=user app.py labels.py ./
-
-EXPOSE 7860
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}"]

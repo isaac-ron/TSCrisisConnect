@@ -1,9 +1,8 @@
-# Pinned to the versions verified in the Docker image
+# Pinned. Inference runs on ONNX Runtime with int8 models (no torch/transformers needed).
 fastapi==0.142.2
 uvicorn==0.54.0
 pydantic==2.13.5
-python-multipart==0.0.32
-transformers==5.17.0
 huggingface_hub==1.33.0
-torch==2.14.1
-sentencepiece==0.2.2
+onnxruntime==1.30.0
+tokenizers==0.23.2
+numpy==2.5.3

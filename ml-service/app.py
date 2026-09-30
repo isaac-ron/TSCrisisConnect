@@ -1,28 +1,27 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from transformers import pipeline
-import torch
 import uvicorn
 import os
 
+from classifier import OnnxTextClassifier
 from labels import binary_result, severity_result
 
-# Either a local directory or a Hugging Face Hub model ID (e.g. "user/crisis-binary-model").
-# Private Hub models are read with the HF_TOKEN environment variable.
-BINARY_MODEL = os.getenv("BINARY_MODEL", "./my_final_binary_model")
-SEVERITY_MODEL = os.getenv("SEVERITY_MODEL", "./my_final_severity_model_4_class")
+# Either a local directory or a Hugging Face Hub model ID. Each must contain config.json,
+# tokenizer.json and onnx/model_quantized.onnx. Private Hub models are read with HF_TOKEN.
+BINARY_MODEL = os.getenv("BINARY_MODEL", "ron4444444/crisis-binary-model")
+SEVERITY_MODEL = os.getenv("SEVERITY_MODEL", "ron4444444/crisis-severity-model")
 
 binary_classifier = None
 severity_classifier = None
 
 
-def load_classifier(name, source, device, device_name):
+def load_classifier(name, source):
     print(f"🚀 Loading {name} model from {source}...")
     try:
-        classifier = pipeline("text-classification", model=source, device=device, token=os.getenv("HF_TOKEN"))
-        print(f"✅ {name.capitalize()} model loaded on {device_name}!")
+        classifier = OnnxTextClassifier(source)
+        print(f"✅ {name.capitalize()} model loaded (ONNX Runtime, int8)!")
         return classifier
     except Exception as e:
         print(f"❌ Failed to load {name} model: {e}")
@@ -32,10 +31,8 @@ def load_classifier(name, source, device, device_name):
 @asynccontextmanager
 async def lifespan(app):
     global binary_classifier, severity_classifier
-    device = 0 if torch.cuda.is_available() else -1
-    device_name = "CUDA" if torch.cuda.is_available() else "CPU"
-    binary_classifier = load_classifier("binary", BINARY_MODEL, device, device_name)
-    severity_classifier = load_classifier("severity", SEVERITY_MODEL, device, device_name)
+    binary_classifier = load_classifier("binary", BINARY_MODEL)
+    severity_classifier = load_classifier("severity", SEVERITY_MODEL)
     yield
 
 
@@ -83,47 +80,45 @@ class HealthResponse(BaseModel):
 
 
 @app.post("/classify/binary", response_model=BinaryResult)
-async def classify_binary(input_data: TextInput):
+def classify_binary(input_data: TextInput):
     if not binary_classifier:
         raise HTTPException(status_code=503, detail="Binary model not loaded")
     try:
-        # A list input always yields one list of per-class scores per text
-        scores = binary_classifier([input_data.text], top_k=None)[0]
-        is_crisis, confidence = binary_result(scores)
+        is_crisis, confidence = binary_result(binary_classifier(input_data.text))
         return BinaryResult(is_crisis=is_crisis, confidence=confidence)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/classify/severity", response_model=SeverityResult)
-async def classify_severity(input_data: TextInput):
+def classify_severity(input_data: TextInput):
     if not severity_classifier:
         raise HTTPException(status_code=503, detail="Severity model not loaded")
     try:
-        scores = severity_classifier([input_data.text], top_k=None)[0]
-        severity, confidence = severity_result(scores)
+        severity, confidence = severity_result(severity_classifier(input_data.text))
         return SeverityResult(severity=severity, confidence=confidence)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/classify/full", response_model=DualResult)
-async def classify_full(input_data: TextInput):
-    binary_result = await classify_binary(input_data)
-    severity_result = await classify_severity(input_data)
-    return DualResult(binary=binary_result, severity=severity_result)
+def classify_full(input_data: TextInput):
+    return DualResult(binary=classify_binary(input_data), severity=classify_severity(input_data))
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
-    device_name = "CUDA" if torch.cuda.is_available() else "CPU"
+async def health_check(response: Response):
+    healthy = binary_classifier is not None and severity_classifier is not None
+    if not healthy:
+        # Fail the platform health check instead of serving 503s from every endpoint
+        response.status_code = 503
     return HealthResponse(
-        status="healthy",
+        status="healthy" if healthy else "models not loaded",
         binary_model_loaded=binary_classifier is not None,
         severity_model_loaded=severity_classifier is not None,
         binary_model=BINARY_MODEL,
         severity_model=SEVERITY_MODEL,
-        device=device_name
+        device="CPU (ONNX Runtime, int8)"
     )
 
 

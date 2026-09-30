@@ -1,0 +1,7 @@
+# Only for tools/export_onnx.py (not needed to run the service)
+torch==2.8.0
+transformers==4.57.0
+onnx==1.18.0
+onnxruntime==1.30.0
+pandas
+pyarrow

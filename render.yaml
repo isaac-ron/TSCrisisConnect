@@ -1,7 +1,22 @@
 services:
     
-  # The ML service runs on a Hugging Face Space (see ml-service/README.md), not Render:
-  # with its two RoBERTa models loaded it uses ~515 MB of RAM, over Render's 512 MB free tier.
+  # ML Service (FastAPI). Runs int8 ONNX models downloaded from Hugging Face:
+  # ~370 MB steady, ~410 MB peak, so it fits the 512 MB free instance (see ml-service/README.md)
+  - type: web
+    name: crisisconnect-ml
+    env: python
+    region: oregon
+    plan: free
+    rootDir: ml-service
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # glibc otherwise gives each request thread its own heap arena (~100 MB more under load)
+      - key: MALLOC_ARENA_MAX
+        value: "2"
 
   # Backend API (Node.js/Express)
   - type: web
@@ -27,7 +42,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: ML_SERVICE_URL
-        value: "https://ron4444444-crisisconnect-ml.hf.space"
+        value: "https://crisisconnect-ml.onrender.com"
       - key: FRONTEND_URL
         value: "https://crisisconnect-frontend.onrender.com"
     
