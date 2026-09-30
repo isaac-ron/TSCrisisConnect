@@ -30,12 +30,14 @@ The full-precision models are ~515 MB each and need torch, so the pair uses ~515
 | Docker image | 3.8 GB | 448 MB |
 | Dependencies | torch, transformers | onnxruntime, tokenizers |
 
-Agreement between the int8 and full-precision predictions, measured on 3,000 tweets from the [CrisisBench](https://huggingface.co/datasets/QCRI/CrisisBench-english) informativeness test split:
+Agreement between the int8 and full-precision predictions:
 
-| Model | Default int8 | `per_channel` + `reduce_range` (used) |
-|---|---|---|
-| Binary | 68.4% | **98.0%** |
-| Severity | 59.8% | **90.7%** (88.7% on texts the binary model calls a crisis; 3.2% move 2+ levels) |
+| Model | Project tweets (same domain as training) | CrisisBench, 3,000 real tweets | CrisisBench with default int8 settings |
+|---|---|---|---|
+| Binary | **99.8%** (accuracy 99.4% → 99.1%) | **98.0%** | 68.4% |
+| Severity | **97.7%** (accuracy 93.8% → 93.6%) | **90.7%** | 59.8% |
+
+"Project tweets" are the 800 labelled tweets in `crisis_tweets.xlsx` plus 179 from `booster_severity.csv`. Most of them were probably in the training set, so the accuracies are an upper bound, not a test score; the agreement figures are valid either way. [CrisisBench](https://huggingface.co/datasets/QCRI/CrisisBench-english) is out of domain (global, real tweets vs. the project's Kenya-focused data), and quantization drift is larger there because the models are less certain.
 
 Default dynamic quantization overflowed on CPUs without VNNI instructions; `reduce_range` avoids that on any x86 CPU.
 
