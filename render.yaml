@@ -18,6 +18,11 @@ services:
         value: "ron4444444"
       - key: HF_TOKEN
         sync: false
+      # Model weights are not in git; point these at Hugging Face Hub model IDs
+      - key: BINARY_MODEL
+        sync: false
+      - key: SEVERITY_MODEL
+        sync: false
     healthCheckPath: /health
     
   # Backend API (Node.js/Express)

@@ -6,6 +6,7 @@ import {Tabs,TabsContent,TabsList,TabsTrigger} from "../ui/tabs";
 import { Alert, AlertDescription } from "../ui/alert";
 import type { UserProfile } from '../lib/types';
 import { API_BASE_URL, AUTH_STORAGE_KEYS } from '../lib/config';
+import { severityBadgeClass } from '../lib/severity';
 import {
   Shield,
   LogOut,
@@ -29,7 +30,6 @@ interface Report {
   longitude?: number;
   crisisType?: string;
   severity?: string;
-  isCrisis?: boolean;
   timestamp: string;
   userId?: string;
   user?: {
@@ -37,6 +37,9 @@ interface Report {
     email?: string;
   };
 }
+
+const osmLink = (lat: number, lng: number) =>
+  `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
 
 export function FirstResponderDashboard({
   onLogout,
@@ -99,34 +102,6 @@ export function FirstResponderDashboard({
     if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
     if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
     return `${Math.floor(seconds / 86400)} days ago`;
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "critical":
-        return "bg-red-500 text-white";
-      case "high":
-        return "bg-orange-500 text-white";
-      case "moderate":
-        return "bg-yellow-500 text-black";
-      default:
-        return "bg-gray-500 text-white";
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "critical":
-        return "bg-red-500 text-white";
-      case "urgent":
-        return "bg-orange-500 text-white";
-      case "high":
-        return "bg-yellow-500 text-black";
-      case "low":
-        return "bg-green-500 text-white";
-      default:
-        return "bg-gray-500 text-white";
-    }
   };
 
   return (
@@ -259,9 +234,7 @@ export function FirstResponderDashboard({
                           <div className="flex items-center gap-2 mb-1">
                             <AlertTriangle className="w-4 h-4 text-red-500" />
                             <Badge
-                              className={getSeverityColor(
-                                report.severity?.toLowerCase() || 'moderate',
-                              )}
+                              className={severityBadgeClass(report.severity)}
                             >
                               {report.severity || 'Unknown'}
                             </Badge>
@@ -306,12 +279,9 @@ export function FirstResponderDashboard({
                             <p className="font-medium">
                               {report.user?.name || 'Anonymous'}
                             </p>
-                            {report.isCrisis && (
+                            {report.crisisType && (
                               <Badge
-                                className={getPriorityColor(
-                                  report.severity === 'Critical' ? 'critical' : 
-                                  report.severity === 'High' ? 'urgent' : 'high'
-                                )}
+                                className={severityBadgeClass(report.severity)}
                               >
                                 {report.severity || 'Medium'}
                               </Badge>
@@ -352,9 +322,7 @@ export function FirstResponderDashboard({
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4 text-red-500" />
                           <Badge
-                            className={getSeverityColor(
-                              report.severity?.toLowerCase() || 'moderate',
-                            )}
+                            className={severityBadgeClass(report.severity)}
                           >
                             {report.severity || 'Unknown'}
                           </Badge>
@@ -384,17 +352,13 @@ export function FirstResponderDashboard({
                           <Users className="w-3 h-3 inline mr-1" />
                           Reported by: {report.user?.name || 'Anonymous'}
                         </p>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline">
-                            View on Map
+                        {report.latitude && report.longitude && (
+                          <Button size="sm" variant="outline" asChild>
+                            <a href={osmLink(report.latitude, report.longitude)} target="_blank" rel="noopener noreferrer">
+                              View on Map
+                            </a>
                           </Button>
-                          <Button
-                            size="sm"
-                            className="bg-destructive hover:bg-destructive/90"
-                          >
-                            Take Action
-                          </Button>
-                        </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -418,12 +382,9 @@ export function FirstResponderDashboard({
                           <p className="font-medium">
                             {report.user?.name || 'Anonymous User'}
                           </p>
-                          {report.isCrisis && (
+                          {report.crisisType && (
                             <Badge
-                              className={getPriorityColor(
-                                report.severity === 'Critical' ? 'critical' :
-                                report.severity === 'High' ? 'urgent' : 'high'
-                              )}
+                              className={severityBadgeClass(report.severity)}
                             >
                               {report.severity || 'Crisis'}
                             </Badge>
@@ -448,17 +409,13 @@ export function FirstResponderDashboard({
                       <p className="text-sm mb-3">
                         {report.description || 'No description'}
                       </p>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          View Location
+                      {report.latitude && report.longitude && (
+                        <Button size="sm" variant="outline" asChild>
+                          <a href={osmLink(report.latitude, report.longitude)} target="_blank" rel="noopener noreferrer">
+                            View Location
+                          </a>
                         </Button>
-                        <Button
-                          size="sm"
-                          className="bg-destructive hover:bg-destructive/90"
-                        >
-                          Respond
-                        </Button>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))

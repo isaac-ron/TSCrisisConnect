@@ -4,8 +4,12 @@ import { saveOfflineMessage } from '../utils/offlineMessages';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { ArrowLeft, WifiOff, Heart, Home, AlertTriangle, ImagePlus, Flame, Droplets, Mountain, CloudRain, ShieldAlert, Car, Building2, Skull, Zap } from 'lucide-react';
-import { API_BASE_URL } from '../lib/config';
+import { ArrowLeft, WifiOff, ImagePlus } from 'lucide-react';
+import { API_BASE_URL, AUTH_STORAGE_KEYS } from '../lib/config';
+import { REPORT_CATEGORIES } from '../lib/categories';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+
+const MAX_MESSAGE_LENGTH = 500;
 
 interface ComposeMessageProps {
   onClose: () => void;
@@ -28,23 +32,11 @@ const readFileAsDataUrl = (file: File): Promise<string> =>
 export function ComposeMessage({ onClose }: ComposeMessageProps) {
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState('');
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useOnlineStatus();
   const [status, setStatus] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Listen for online/offline events
-  React.useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const handleSend = async () => {
     if (message.trim() && category) {
@@ -73,7 +65,7 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
       
       if (isOnline) {
         try {
-          const token = localStorage.getItem('cc_token') || localStorage.getItem('token');
+          const token = localStorage.getItem(AUTH_STORAGE_KEYS.token);
           console.log('🌐 [ComposeMessage] Attempting POST to /reports...');
           console.log('🔑 [ComposeMessage] Auth token:', token ? 'Present' : 'Missing');
           console.log('🌐 [ComposeMessage] API URL:', `${API_BASE_URL}/reports`);
@@ -90,6 +82,13 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
           console.log('📥 [ComposeMessage] Response status:', response.status);
           console.log('📥 [ComposeMessage] Response ok:', response.ok);
           
+          if (response.status >= 400 && response.status < 500) {
+            // The server rejected the report itself; retrying later won't help
+            const result = await response.json().catch(() => null);
+            setStatus(result?.error || 'The report could not be accepted.');
+            return;
+          }
+
           if (!response.ok) {
             const errorText = await response.text();
             console.error('❌ [ComposeMessage] Server error response:', errorText);
@@ -106,7 +105,7 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
           console.error('❌ [ComposeMessage] Fetch error:', error);
           console.error('❌ [ComposeMessage] Error details:', error instanceof Error ? error.message : 'Unknown error');
           await saveOfflineMessage({ ...msg, synced: false });
-          setStatus('No connection. Message saved for later sync.');
+          setStatus('Could not reach the server. Message saved for later sync.');
           console.log('💾 [ComposeMessage] Message saved to IndexedDB as unsynced');
         }
       } else {
@@ -161,20 +160,6 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
     };
   }, [attachment]);
 
-  const categories = [
-    { value: 'medical', label: 'Medical Emergency', icon: Heart, color: 'text-red-600' },
-    { value: 'fire', label: 'Fire/Wildfire', icon: Flame, color: 'text-orange-600' },
-    { value: 'flood', label: 'Flood/Water Emergency', icon: Droplets, color: 'text-blue-500' },
-    { value: 'earthquake', label: 'Earthquake', icon: Mountain, color: 'text-amber-700' },
-    { value: 'storm', label: 'Severe Storm/Hurricane', icon: CloudRain, color: 'text-slate-600' },
-    { value: 'violence', label: 'Violence/Active Threat', icon: ShieldAlert, color: 'text-red-700' },
-    { value: 'accident', label: 'Vehicle/Traffic Accident', icon: Car, color: 'text-yellow-600' },
-    { value: 'building', label: 'Building Collapse/Structural', icon: Building2, color: 'text-stone-600' },
-    { value: 'chemical', label: 'Chemical/Gas Leak', icon: Skull, color: 'text-purple-600' },
-    { value: 'power', label: 'Power Outage', icon: Zap, color: 'text-gray-600' },
-    { value: 'shelter', label: 'Need Shelter', icon: Home, color: 'text-blue-600' },
-    { value: 'other', label: 'Other Emergency', icon: AlertTriangle, color: 'text-orange-600' },
-  ];
 
   return (
     <div className="min-h-screen bg-background">
@@ -199,7 +184,7 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
               <SelectValue placeholder="Select emergency type" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map((cat) => {
+              {REPORT_CATEGORIES.map((cat) => {
                 const Icon = cat.icon;
                 return (
                   <SelectItem key={cat.value} value={cat.value}>
@@ -222,9 +207,10 @@ export function ComposeMessage({ onClose }: ComposeMessageProps) {
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setMessage(e.target.value)}
             placeholder="Describe your emergency situation and location..."
             className="min-h-32 resize-none"
+            maxLength={MAX_MESSAGE_LENGTH}
           />
           <p className="text-xs text-muted-foreground">
-            {message.length}/500 characters
+            {message.length}/{MAX_MESSAGE_LENGTH} characters
           </p>
         </div>
 

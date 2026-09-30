@@ -2,12 +2,15 @@ import { Button } from '../ui/button';
 import { AlertCircle, Wifi, WifiOff, Shield } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import logo from '../assets/crisisconnect-high-resolution-logo-transparent.png';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 interface HomeScreenProps {
   onCompose: () => void;
   onViewAlerts: () => void;
 }
 
 export function HomeScreen({ onCompose, onViewAlerts }: HomeScreenProps) {
+  const isOnline = useOnlineStatus();
+
   return (
     <div className="min-h-screen p-4 flex flex-col">
       {/* Header with app branding */}
@@ -23,10 +26,17 @@ export function HomeScreen({ onCompose, onViewAlerts }: HomeScreenProps) {
 
       {/* Connection status */}
       <div className="mb-8 flex justify-center">
-        <Badge variant="secondary" className="px-3 py-1">
-          <WifiOff className="w-3 h-3 mr-2" />
-          Offline Mode Active
-        </Badge>
+        {isOnline ? (
+          <Badge variant="secondary" className="px-3 py-1">
+            <Wifi className="w-3 h-3 mr-2" />
+            Online
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="px-3 py-1">
+            <WifiOff className="w-3 h-3 mr-2" />
+            Offline: reports will sync when you reconnect
+          </Badge>
+        )}
       </div>
 
       {/* Main action buttons */}

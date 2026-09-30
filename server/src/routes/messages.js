@@ -1,11 +1,10 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
+import { classifyCrisisBinary, classifySeverity } from "../nlp/local-model-loader.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
-
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 // Create a new message with NLP analysis
 router.post("/", authenticate, async (req, res) => {
@@ -25,40 +24,12 @@ router.post("/", authenticate, async (req, res) => {
     // Analyze message with ML service if it's potentially a crisis alert
     if (type === "alert" || content.length > 20) {
       try {
-        // Binary classification - is it a crisis?
-        const binaryResponse = await fetch(`${ML_SERVICE_URL}/classify/binary`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: content }),
-        });
+        const binary = await classifyCrisisBinary(content);
+        isCrisis = binary.isCrisis;
+        confidence = binary.confidence;
 
-        if (binaryResponse.ok) {
-          const binaryResult = await binaryResponse.json();
-          isCrisis = binaryResult.label === "crisis" || binaryResult.label === "LABEL_1";
-          confidence = binaryResult.score;
-
-          // If it's a crisis, get severity
-          if (isCrisis) {
-            const severityResponse = await fetch(`${ML_SERVICE_URL}/classify/severity`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: content }),
-            });
-
-            if (severityResponse.ok) {
-              const severityResult = await severityResponse.json();
-              severity = severityResult.label;
-              
-              // Map severity labels to standard format
-              const severityMap = {
-                'LABEL_0': 'Low',
-                'LABEL_1': 'Medium', 
-                'LABEL_2': 'High',
-                'LABEL_3': 'Critical'
-              };
-              severity = severityMap[severity] || severity;
-            }
-          }
+        if (isCrisis) {
+          ({ severity } = await classifySeverity(content));
         }
       } catch (mlError) {
         console.error('ML service error:', mlError);

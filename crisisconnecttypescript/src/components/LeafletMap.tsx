@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+// Bundled locally (rather than from a CDN) so markers still render offline
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import { severityBadgeClass, severityColor } from '../lib/severity';
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
 });
 
 interface Alert {
@@ -25,6 +31,7 @@ interface LeafletMapProps {
   alerts: Alert[];
   center?: [number, number];
   zoom?: number;
+  showMyLocation?: boolean;
 }
 
 // Component to handle user location
@@ -41,28 +48,14 @@ function LocationMarker() {
         map.flyTo(newPosition, 13);
       },
       (error) => {
+        // Without a real position, show no marker rather than a made-up one
         console.log('Geolocation error:', error);
-        // Default to a central location if geolocation fails
-        const defaultPosition: [number, number] = [40.7128, -74.0060]; // New York City
-        setPosition(defaultPosition);
-        map.setView(defaultPosition, 10);
       }
     );
   }, [map]);
 
-  const userIcon = new L.Icon({
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41],
-    className: 'user-location-marker'
-  });
-
   return position === null ? null : (
-    <Marker position={position} icon={userIcon}>
+    <Marker position={position}>
       <Popup>
         <div className="text-sm">
           <strong>Your Location</strong>
@@ -76,23 +69,12 @@ function LocationMarker() {
   );
 }
 
-// Create custom icons for different alert types
+// Circle marker colored by severity
 const createAlertIcon = (urgency: string) => {
-  const getColor = (urgency: string) => {
-    switch (urgency) {
-      case 'High': return '#ef4444';
-      case 'Medium': return '#f59e0b';
-      case 'Low': return '#10b981';
-      default: return '#6b7280';
-    }
-  };
-
-  const color = getColor(urgency);
-  
   return new L.DivIcon({
     html: `
       <div style="
-        background-color: ${color};
+        background-color: ${severityColor(urgency)};
         width: 20px;
         height: 20px;
         border-radius: 50%;
@@ -107,7 +89,7 @@ const createAlertIcon = (urgency: string) => {
   });
 };
 
-export default function LeafletMap({ alerts, center = [0, 20], zoom = 3 }: LeafletMapProps) {
+export default function LeafletMap({ alerts, center = [0, 20], zoom = 3, showMyLocation = true }: LeafletMapProps) {
   return (
     <div className="w-full h-full">
       <MapContainer
@@ -120,9 +102,9 @@ export default function LeafletMap({ alerts, center = [0, 20], zoom = 3 }: Leafl
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        
-        <LocationMarker />
-        
+
+        {showMyLocation && <LocationMarker />}
+
         {alerts.map((alert) => (
           <Marker
             key={alert.id}
@@ -136,11 +118,7 @@ export default function LeafletMap({ alerts, center = [0, 20], zoom = 3 }: Leafl
                 <div className="text-xs text-gray-500">
                   <div>📍 {alert.location.address}</div>
                   <div>🕒 {new Date(alert.timestamp).toLocaleString()}</div>
-                  <div className={`inline-block px-2 py-1 rounded text-white text-xs mt-1 ${
-                    alert.urgency === 'High' ? 'bg-red-500' :
-                    alert.urgency === 'Medium' ? 'bg-yellow-500' :
-                    'bg-green-500'
-                  }`}>
+                  <div className={`inline-block px-2 py-1 rounded text-xs mt-1 ${severityBadgeClass(alert.urgency)}`}>
                     {alert.urgency} Priority
                   </div>
                 </div>

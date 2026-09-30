@@ -19,6 +19,8 @@ env.allowLocalModels = true;
 console.log(`[LocalModel] Model path configured: ${LOCAL_MODEL_PATH}`);
 console.log(`[LocalModel] Cache directory set to: ${LOCAL_MODEL_ROOT}`);
 
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+
 let crisisClassifier = null;
 let crisisClassifierPromise = null;
 let nerModel = null;
@@ -31,7 +33,6 @@ let nerModelPromise = null;
 export async function loadCrisisClassifier() {
   // First try to connect to Python ML service
   try {
-    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
     console.log(`[LocalModel] 🔍 Attempting to connect to ML service at ${ML_SERVICE_URL}...`);
     
     const healthResponse = await fetch(`${ML_SERVICE_URL}/health`, { 
@@ -201,7 +202,6 @@ export async function loadSeverityModel() {
  */
 export async function classifyCrisisBinary(text) {
   try {
-    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
     // Increase timeout to 30s for HF Inference API cold starts
     const response = await fetch(`${ML_SERVICE_URL}/classify/binary`, {
       method: 'POST',
@@ -234,7 +234,6 @@ export async function classifyCrisisBinary(text) {
  */
 export async function classifySeverity(text) {
   try {
-    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
     // Increase timeout to 30s for HF Inference API cold starts
     const response = await fetch(`${ML_SERVICE_URL}/classify/severity`, {
       method: 'POST',
@@ -270,7 +269,6 @@ export async function classifySeverity(text) {
  */
 export async function classifyTweetLocal(text) {
   try {
-    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
     const response = await fetch(`${ML_SERVICE_URL}/classify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

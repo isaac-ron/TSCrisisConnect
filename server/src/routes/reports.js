@@ -11,6 +11,7 @@ const prisma = new PrismaClient();
 
 const DEFAULT_REPORTER_EMAIL = process.env.DEFAULT_REPORT_EMAIL || "anonymous@crisisconnect.local";
 const DEFAULT_REPORTER_NAME = process.env.DEFAULT_REPORT_NAME || "Offline Reporter";
+const MAX_DESCRIPTION_LENGTH = 500;
 let cachedDefaultUserId = null;
 
 async function getDefaultReporterUserId() {
@@ -62,9 +63,14 @@ router.post("/", optionalAuth, async (req, res) => {
       hasAttachment: Boolean(attachment),
     });
     
-    if (!desc) {
+    if (typeof desc !== 'string' || !desc.trim()) {
       console.warn('⚠️ [POST /reports] Skipping message with no content');
-      results.push({ error: 'No content provided', data: msg });
+      results.push({ error: 'No content provided', status: 400 });
+      continue;
+    }
+
+    if (desc.length > MAX_DESCRIPTION_LENGTH) {
+      results.push({ error: `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters`, status: 400 });
       continue;
     }
     
@@ -119,7 +125,7 @@ router.post("/", optionalAuth, async (req, res) => {
         data: {
           description: desc,
           location: finalLocation || location || '',
-          status: category || undefined,
+          category: category || null,
           userId: targetUserId,
           attachment,
           extractedLocation: finalLocation,
@@ -135,12 +141,19 @@ router.post("/", optionalAuth, async (req, res) => {
     } catch (e) {
       console.error('❌ [POST /reports] Failed to save report:', e.message);
       console.error('❌ [POST /reports] Stack trace:', e.stack);
-      results.push({ error: e.message, data: msg });
+      results.push({ error: 'Failed to save report', status: 500 });
     }
   }
   
   console.log('📤 [POST /reports] Sending response with', results.length, 'result(s)');
-  res.json(Array.isArray(body) ? results : results[0]);
+  if (Array.isArray(body)) {
+    // Batch: 207 tells the client to inspect per-item results
+    const failed = results.some((r) => r.error);
+    return res.status(failed ? 207 : 201).json(results);
+  }
+  const [result] = results;
+  // Single report: a failure must not look like success, or offline sync marks it as sent
+  return res.status(result.error ? result.status : 201).json(result);
 });
 
 // Get all reports
@@ -155,6 +168,8 @@ router.get("/", optionalAuth, async (req, res) => {
       include: canSeeReporter
         ? { user: { select: { id: true, name: true, email: true } } }
         : undefined,
+      // Base64 images make the list huge and no list view displays them
+      omit: { attachment: true },
       orderBy: { timestamp: 'desc' }
     });
     console.log('✅ [GET /reports] Found', reports.length, 'reports');

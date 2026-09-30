@@ -28,6 +28,7 @@ model Report {
   description       String
   location          String?
   status            String   @default("pending")
+  category          String?  // category chosen by the reporter, e.g. "fire", "medical"
   timestamp         DateTime @default(now())
   attachment        String?
   user              User     @relation(fields: [userId], references: [id])

@@ -5,6 +5,8 @@ import { AlertTriangle, Clock, MapPin, Info } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { FirstResponderCard } from '../ui/first-responder-card';
 import { API_BASE_URL } from '../lib/config';
+import { getCategory } from '../lib/categories';
+import { severityBadgeClass, severityColor } from '../lib/severity';
 
 // Define the structure of a report to match the backend data
 interface FirstResponder {
@@ -16,6 +18,9 @@ interface FirstResponder {
 }
 
 interface Report {
+  // Community reports and social-media alerts share one feed; ids are only unique per source
+  key: string;
+  source: 'community' | 'social';
   id: number;
   description: string;
   location: string | null;
@@ -25,6 +30,7 @@ interface Report {
   extractedLocation: string | null;
   crisisType: string | null;
   confidence: number | null;
+  category?: string | null;
   assignedResponder?: FirstResponder | null;
 }
 
@@ -44,22 +50,6 @@ const timeSince = (date: Date): string => {
   return Math.floor(seconds) + " seconds ago";
 };
 
-// Helper to set the badge color based on the report's severity
-const getSeverityBadgeClass = (severity: string | null): string => {
-  switch (severity?.toLowerCase()) {
-    case 'critical':
-      return 'bg-red-600 text-white';
-    case 'high':
-      return 'bg-orange-500 text-white';
-    case 'medium':
-      return 'bg-yellow-400 text-black';
-    case 'low':
-      return 'bg-blue-500 text-white';
-    default:
-      return 'bg-gray-500 text-white';
-  }
-};
-
 export function AlertFeed() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,14 +58,23 @@ export function AlertFeed() {
   // Function to fetch reports from the backend API
   const fetchReports = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/social/social-alerts`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch: ${response.statusText}`);
+      const [reportsResponse, socialResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/reports`),
+        fetch(`${API_BASE_URL}/social/social-alerts`),
+      ]);
+      if (!reportsResponse.ok || !socialResponse.ok) {
+        throw new Error(`Failed to fetch: ${(reportsResponse.ok ? socialResponse : reportsResponse).statusText}`);
       }
-      const data: Report[] = await response.json();
+      const community: Omit<Report, 'key' | 'source'>[] = await reportsResponse.json();
+      const social: Omit<Report, 'key' | 'source'>[] = await socialResponse.json();
+      const data: Report[] = [
+        ...community.map((r) => ({ ...r, source: 'community' as const, key: `community-${r.id}` })),
+        ...social.map((r) => ({ ...r, source: 'social' as const, key: `social-${r.id}` })),
+      ];
       // Sort reports to show the newest ones first
       data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setReports(data);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
@@ -144,24 +143,25 @@ export function AlertFeed() {
     <div className="space-y-4 p-4">
       <h1 className="text-2xl font-bold">Live Alert Feed</h1>
       {reports.map((report) => (
-        <Card key={report.id} className="overflow-hidden border-l-4" style={{
-          borderLeftColor: report.severity === 'Critical' ? '#dc2626' : 
-                          report.severity === 'High' ? '#f97316' :
-                          report.severity === 'Medium' ? '#facc15' : '#3b82f6'
+        <Card key={report.key} className="overflow-hidden border-l-4" style={{
+          borderLeftColor: severityColor(report.severity)
         }}>
           <CardHeader>
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <CardTitle className="text-lg font-semibold leading-tight mb-2">{report.description}</CardTitle>
                 <div className="flex gap-2 flex-wrap">
-                  <Badge className={getSeverityBadgeClass(report.severity)}>
+                  <Badge className={severityBadgeClass(report.severity)}>
                     {report.severity || 'Unknown'}
                   </Badge>
-                  {report.crisisType && (
+                  {(report.crisisType || report.category) && (
                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      {report.crisisType}
+                      {report.crisisType || getCategory(report.category).label}
                     </Badge>
                   )}
+                  <Badge variant="outline">
+                    {report.source === 'community' ? 'Community report' : 'Social media'}
+                  </Badge>
                   {report.confidence && (
                     <Badge variant="outline" className="bg-gray-50 text-gray-700">
                       {Math.round(report.confidence * 100)}% confidence

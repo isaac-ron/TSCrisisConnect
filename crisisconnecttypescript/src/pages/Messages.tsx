@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { getAllMessages, markMessageSynced } from '../utils/offlineMessages';
+import { getAllMessages } from '../utils/offlineMessages';
+import { syncPendingMessages } from '../utils/syncMessages';
+import { getCategory } from '../lib/categories';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { CheckCircle, Clock, Heart, Home, AlertTriangle, RefreshCw } from 'lucide-react';
-import { API_BASE_URL } from '../lib/config';
+import { CheckCircle, Clock, RefreshCw } from 'lucide-react';
 
 export function Messages() {
   const [activeTab, setActiveTab] = useState('sent');
@@ -34,51 +35,7 @@ export function Messages() {
   const manualSync = async () => {
     setSyncing(true);
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('cc_token');
-      if (!token) {
-        alert('Please log in to sync messages');
-        setSyncing(false);
-        return;
-      }
-
-      const messages = await getAllMessages();
-      const unsynced = messages.filter((m) => !m.synced);
-
-      if (unsynced.length === 0) {
-        alert('No pending messages to sync');
-        setSyncing(false);
-        return;
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-
-      for (const msg of unsynced) {
-        try {
-          console.log(`[Manual Sync] Syncing message ${msg.id}...`);
-          const response = await fetch(`${API_BASE_URL}/reports`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(msg),
-          });
-
-          if (response.ok) {
-            await markMessageSynced(msg.id);
-            console.log(`[Manual Sync] ✅ Synced message ${msg.id}`);
-            successCount++;
-          } else {
-            const errorText = await response.text();
-            console.error(`[Manual Sync] ❌ Failed: ${response.status} - ${errorText}`);
-            failCount++;
-          }
-        } catch (error) {
-          console.error(`[Manual Sync] ❌ Error:`, error);
-          failCount++;
-        }
-      }
+      const { synced, failed } = await syncPendingMessages();
 
       // Reload messages
       const all = await getAllMessages();
@@ -86,10 +43,12 @@ export function Messages() {
       setPendingMessages(all.filter((m) => !m.synced));
 
       // Show result to user
-      if (successCount > 0 && failCount === 0) {
-        alert(`✅ Successfully synced ${successCount} message(s)`);
-      } else if (successCount > 0 && failCount > 0) {
-        alert(`⚠️ Synced ${successCount} message(s), ${failCount} failed`);
+      if (synced === 0 && failed === 0) {
+        alert('No pending messages to sync');
+      } else if (failed === 0) {
+        alert(`✅ Successfully synced ${synced} message(s)`);
+      } else if (synced > 0) {
+        alert(`⚠️ Synced ${synced} message(s), ${failed} failed`);
       } else {
         alert(`❌ Failed to sync messages. Check console for details.`);
       }
@@ -101,54 +60,40 @@ export function Messages() {
     }
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'medical': return <Heart className="w-4 h-4 text-red-600" />;
-      case 'shelter': return <Home className="w-4 h-4 text-blue-600" />;
-      case 'threat': return <AlertTriangle className="w-4 h-4 text-orange-600" />;
-      default: return <AlertTriangle className="w-4 h-4" />;
-    }
-  };
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'medical': return 'bg-red-100 text-red-800 border-red-200';
-      case 'shelter': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'threat': return 'bg-orange-100 text-orange-800 border-orange-200';
-      default: return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const MessageCard = ({ message }: { message: any }) => (
-    <Card className="p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            {getCategoryIcon(message.category)}
-            <Badge variant="outline" className={getCategoryColor(message.category)}>
-              {message.category}
-            </Badge>
+  const MessageCard = ({ message }: { message: any }) => {
+    const category = getCategory(message.category);
+    const Icon = category.icon;
+      return (
+      <Card className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon className={`w-4 h-4 ${category.color}`} />
+              <Badge variant="outline">
+                {category.label}
+              </Badge>
+            </div>
+            <p className="text-sm leading-relaxed">{message.content || message.message}</p>
           </div>
-          <p className="text-sm leading-relaxed">{message.content || message.message}</p>
+          <div className="flex items-center gap-1">
+            {message.synced ? (
+              <CheckCircle className="w-4 h-4 text-green-600" />
+            ) : (
+              <Clock className="w-4 h-4 text-orange-500" />
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {message.synced ? (
-            <CheckCircle className="w-4 h-4 text-green-600" />
-          ) : (
-            <Clock className="w-4 h-4 text-orange-500" />
-          )}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            {message.timestamp ? message.timestamp : message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}
+          </span>
+          <Badge variant={message.synced ? "secondary" : "outline"}>
+            {message.synced ? 'Sent' : 'Pending sync'}
+          </Badge>
         </div>
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          {message.timestamp ? message.timestamp : message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}
-        </span>
-        <Badge variant={message.synced ? "secondary" : "outline"}>
-          {message.synced ? 'Sent' : 'Pending sync'}
-        </Badge>
-      </div>
-    </Card>
-  );
+      </Card>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
