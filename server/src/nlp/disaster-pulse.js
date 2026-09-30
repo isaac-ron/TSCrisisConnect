@@ -109,7 +109,9 @@ export async function analyzeTweetWithDisasterPulse(text) {
     return {
       isCrisis: true,
       crisisType: crisisTypeResult.crisisType,
-      confidence: crisisTypeResult.confidence,
+      // Confidence that this is a crisis at all. The type score is spread across ~55 zero-shot
+      // labels, so it is always low and would read as "7% confidence" on an obvious fire.
+      confidence: isCrisisCandidate.confidence,
       severity,
       extractedLocation: locationData.extractedLocation,
       latitude: coordinates ? coordinates.latitude : null,

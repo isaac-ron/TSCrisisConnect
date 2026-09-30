@@ -1,30 +1,8 @@
 services:
     
-  # ML Service (Python FastAPI with models from Hugging Face)
-  - type: web
-    name: crisisconnect-ml
-    env: python
-    region: oregon
-    plan: free
-    rootDir: ml-service
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app:app --host 0.0.0.0 --port $PORT"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.10.0"
-      - key: PORT
-        value: "8000"
-      - key: HF_USERNAME
-        value: "ron4444444"
-      - key: HF_TOKEN
-        sync: false
-      # Model weights are not in git; point these at Hugging Face Hub model IDs
-      - key: BINARY_MODEL
-        sync: false
-      - key: SEVERITY_MODEL
-        sync: false
-    healthCheckPath: /health
-    
+  # The ML service runs on a Hugging Face Space (see ml-service/README.md), not Render:
+  # with its two RoBERTa models loaded it uses ~515 MB of RAM, over Render's 512 MB free tier.
+
   # Backend API (Node.js/Express)
   - type: web
     name: crisisconnect-backend
@@ -49,7 +27,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: ML_SERVICE_URL
-        value: "https://crisisconnect-ml.onrender.com"
+        value: "https://ron4444444-crisisconnect-ml.hf.space"
       - key: FRONTEND_URL
         value: "https://crisisconnect-frontend.onrender.com"
     
@@ -63,8 +41,6 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         value: "https://crisisconnect-backend.onrender.com"
-      - key: VITE_ML_SERVICE_URL
-        value: "https://crisisconnect-ml.onrender.com"
 
 databases:
   - name: crisisconnect-db
