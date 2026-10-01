@@ -1,25 +1,24 @@
 // server/src/routes/social-media.js
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../db.js';
 import { mockTwitterFeed } from '../services/twitter-mock.js';
-import { analyzeTweetWithDisasterPulse } from '../nlp/disaster-pulse.js';
+import { analyzeText } from '../nlp/disaster-pulse.js';
+import { logger } from '../logger.js';
+
+const log = logger.child({ module: 'social-media' });
 import { authenticate, authorize } from '../middleware/authMiddleware.js';
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 // This endpoint simulates fetching tweets, processing them, and saving them as SocialAlerts.
 // Admin-only: each call writes to the database and runs the NLP models.
 router.post('/ingest-tweets', authenticate, authorize('admin'), async (req, res) => {
-  console.log('🐦 [Ingest] Received request to ingest tweets');
   const tweets = mockTwitterFeed();
-  console.log(`🐦 [Ingest] Fetched ${tweets.length} new mock tweets.`);
   
   const processedAlerts = [];
   for (const tweet of tweets) {
     try {
-      console.log(`Processing tweet: "${tweet.text}"`);
-      const nlpData = await analyzeTweetWithDisasterPulse(tweet.text);
+      const nlpData = await analyzeText(tweet.text);
 
       // Only save the tweet if it's classified as a crisis
       if (nlpData.isCrisis) {
@@ -37,12 +36,10 @@ router.post('/ingest-tweets', authenticate, authorize('admin'), async (req, res)
           },
         });
         processedAlerts.push(newAlert);
-        console.log(`✅ Saved alert ${newAlert.id} (${nlpData.crisisType}) for tweet.`);
       } else {
-        console.log('⏭️  Tweet not crisis-related. Skipping.');
       }
     } catch (error) {
-      console.error(`❌ Failed to process tweet: ${error.message}`);
+      log.error({ err: error }, 'failed to process tweet');
     }
   }
 
@@ -60,7 +57,7 @@ router.get('/social-alerts', async (req, res) => {
     });
     res.json(socialAlerts);
   } catch (error) {
-    console.error('Failed to fetch social alerts:', error);
+    log.error({ err: error }, 'failed to fetch social alerts');
     res.status(500).json({ error: 'Failed to fetch social alerts' });
   }
 });

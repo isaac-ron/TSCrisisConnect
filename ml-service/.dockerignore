@@ -1,9 +1,5 @@
 __pycache__/
 .pytest_cache/
 tests/
-my_final_binary_model/
-my_final_severity_model_4_class/
-dslim/
 CrisisTransformers/
-simple_app.py
 onnx-export/

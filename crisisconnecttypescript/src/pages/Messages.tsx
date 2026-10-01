@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getAllMessages } from '../utils/offlineMessages';
+import { getAllMessages, type OfflineMessage } from '../utils/offlineMessages';
 import { syncPendingMessages } from '../utils/syncMessages';
 import { getCategory } from '../lib/categories';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -11,8 +11,8 @@ import { CheckCircle, Clock, RefreshCw } from 'lucide-react';
 export function Messages() {
   const [activeTab, setActiveTab] = useState('sent');
 
-  const [sentMessages, setSentMessages] = useState<any[]>([]);
-  const [pendingMessages, setPendingMessages] = useState<any[]>([]);
+  const [sentMessages, setSentMessages] = useState<OfflineMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = useState<OfflineMessage[]>([]);
   const [syncing, setSyncing] = useState(false);
 
   // Load messages from IndexedDB
@@ -60,7 +60,7 @@ export function Messages() {
     }
   };
 
-  const MessageCard = ({ message }: { message: any }) => {
+  const MessageCard = ({ message }: { message: OfflineMessage }) => {
     const category = getCategory(message.category);
     const Icon = category.icon;
       return (
@@ -85,7 +85,7 @@ export function Messages() {
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
-            {message.timestamp ? message.timestamp : message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}
+            {new Date(message.createdAt).toLocaleString()}
           </span>
           <Badge variant={message.synced ? "secondary" : "outline"}>
             {message.synced ? 'Sent' : 'Pending sync'}

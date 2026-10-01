@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is not set. Copy server/.env.example to server/.env and fill it in.');

@@ -1,6 +1,6 @@
 import express from 'express';
-import { classifyCrisisBinary, classifySeverity } from '../nlp/local-model-loader.js';
-import { analyzeTweetWithDisasterPulse } from '../nlp/disaster-pulse.js';
+import { classifyCrisisBinary, classifySeverity } from '../nlp/ml-client.js';
+import { analyzeText } from '../nlp/disaster-pulse.js';
 
 const router = express.Router();
 
@@ -33,7 +33,7 @@ router.post('/model-test', async (req, res) => {
 
     // Also run full DisasterPulse analysis for comparison
     try {
-      const dp = await analyzeTweetWithDisasterPulse(text);
+      const dp = await analyzeText(text);
       results.disasterPulse = dp;
     } catch (e) {
       results.disasterPulse = { error: e.message };
@@ -41,7 +41,6 @@ router.post('/model-test', async (req, res) => {
 
     return res.json(results);
   } catch (err) {
-    console.error('[Debug] model-test error:', err);
     return res.status(500).json({ error: err.message });
   }
 });

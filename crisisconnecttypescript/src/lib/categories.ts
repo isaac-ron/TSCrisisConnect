@@ -29,3 +29,14 @@ const OTHER = REPORT_CATEGORIES[REPORT_CATEGORIES.length - 1];
 export function getCategory(value?: string | null): ReportCategory {
   return REPORT_CATEGORIES.find((c) => c.value === value) ?? OTHER;
 }
+
+/**
+ * Display label for a report's crisis type. The server stores category keys ("fire");
+ * reports created before that stored free text ("wildfire"), which is shown as-is.
+ */
+export function crisisTypeLabel(crisisType?: string | null, category?: string | null): string {
+  const value = crisisType || category;
+  if (!value) return 'Unknown crisis';
+  const match = REPORT_CATEGORIES.find((c) => c.value === value);
+  return match ? match.label : value.charAt(0).toUpperCase() + value.slice(1);
+}

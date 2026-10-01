@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "../ui/alert";
 import type { UserProfile } from '../lib/types';
 import { API_BASE_URL, AUTH_STORAGE_KEYS } from '../lib/config';
 import { severityBadgeClass } from '../lib/severity';
+import { crisisTypeLabel } from '../lib/categories';
 import {
   Shield,
   LogOut,
@@ -240,7 +241,7 @@ export function FirstResponderDashboard({
                             </Badge>
                           </div>
                           <p className="font-medium">
-                            {report.crisisType || 'Crisis'}
+                            {crisisTypeLabel(report.crisisType)}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {report.description?.substring(0, 80) || 'No description'}...
@@ -327,7 +328,7 @@ export function FirstResponderDashboard({
                             {report.severity || 'Unknown'}
                           </Badge>
                           <Badge variant="outline">
-                            {report.crisisType || 'Crisis'}
+                            {crisisTypeLabel(report.crisisType)}
                           </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground flex items-center gap-1">
@@ -336,7 +337,7 @@ export function FirstResponderDashboard({
                         </div>
                       </div>
                       <h3 className="font-medium mb-2">
-                        {report.crisisType || 'Emergency Report'}
+                        {crisisTypeLabel(report.crisisType)}
                       </h3>
                       <p className="text-sm text-muted-foreground mb-3">
                         {report.description || 'No description'}
@@ -391,7 +392,7 @@ export function FirstResponderDashboard({
                           )}
                           {report.crisisType && (
                             <Badge variant="outline">
-                              {report.crisisType}
+                              {crisisTypeLabel(report.crisisType)}
                             </Badge>
                           )}
                         </div>

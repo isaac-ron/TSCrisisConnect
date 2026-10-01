@@ -1,17 +1,22 @@
 import express from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
-import { processTextForCrisisInfo } from "../shared/nlp-module.js";
-import { analyzeCrisisImage, analyzeMultimodalCrisis } from "../services/image-crisis-detector.js";
+import { prisma } from "../db.js";
+import { logger } from "../logger.js";
+import { analyzeText } from "../nlp/disaster-pulse.js";
+import { CATEGORIES } from "../nlp/categories.js";
+import { analyzeCrisisImage } from "../services/image-crisis-detector.js";
 import { optionalAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const prisma = new PrismaClient();
+const log = logger.child({ module: "reports" });
 
 const DEFAULT_REPORTER_EMAIL = process.env.DEFAULT_REPORT_EMAIL || "anonymous@crisisconnect.local";
 const DEFAULT_REPORTER_NAME = process.env.DEFAULT_REPORT_NAME || "Offline Reporter";
 const MAX_DESCRIPTION_LENGTH = 500;
+// An image classified as a crisis with at least this confidence overrides the text analysis
+const IMAGE_CONFIDENCE_THRESHOLD = 0.7;
+const STAFF_ROLES = ["first-responder", "admin"];
 let cachedDefaultUserId = null;
 
 async function getDefaultReporterUserId() {
@@ -37,115 +42,80 @@ async function getDefaultReporterUserId() {
   return cachedDefaultUserId;
 }
 
+// Gemini describes image crises in free text ("vehicle accident", "earthquake damage")
+const categoryFromDescription = (text) =>
+  CATEGORIES.find((c) => c.keywords?.test(text ?? ""))?.key ?? "other";
 
-// Accept single or batch offline-synced messages
+async function createReport({ text, category, location, attachment }, userId) {
+  const nlp = await analyzeText(text, { category });
+  const report = {
+    crisisType: nlp.crisisType,
+    severity: nlp.severity,
+    confidence: nlp.confidence,
+    extractedLocation: nlp.extractedLocation,
+  };
+
+  if (attachment) {
+    const image = await analyzeCrisisImage(attachment);
+    if (image.isCrisis && image.confidence > IMAGE_CONFIDENCE_THRESHOLD) {
+      report.crisisType = category || categoryFromDescription(image.crisisType);
+      report.severity = image.severity || report.severity;
+      report.confidence = Math.max(image.confidence, report.confidence || 0);
+      report.extractedLocation ||= image.location;
+    } else if (image.isCrisis && nlp.isCrisis) {
+      // Text and image agree on a crisis
+      report.confidence = Math.min(1.0, (nlp.confidence || 0.5) * 1.2);
+    }
+  }
+
+  return prisma.report.create({
+    data: {
+      ...report,
+      description: text,
+      location: report.extractedLocation || location || "",
+      category: category || null,
+      userId,
+      attachment,
+      latitude: nlp.latitude,
+      longitude: nlp.longitude,
+    },
+    omit: { attachment: true },
+  });
+}
+
+// Accepts one report, or an array of reports synced from offline storage
 router.post("/", optionalAuth, async (req, res) => {
-  console.log('🚀 [POST /reports] Request received');
-  console.log('📦 [POST /reports] Request body:', JSON.stringify(req.body, null, 2));
-  console.log('👤 [POST /reports] Authenticated user:', req.user ? req.user.id : 'Anonymous');
-  
   const body = req.body;
-  // Accept either a single message or an array of messages
-  const messages = Array.isArray(body) ? body : [body];
-  console.log('📝 [POST /reports] Processing', messages.length, 'message(s)');
-  
-  const results = [];
-  for (const msg of messages) {
-    // Accept both offline and online message formats
-    const { message, category, description, location, content, attachment } = msg;
-    // Prefer 'description' if present, else use 'message' or 'content'
-    const desc = description || message || content;
+  const items = Array.isArray(body) ? body : [body];
 
-    console.log('📄 [POST /reports] Processing message:', {
-      desc,
-      category,
-      location,
-      hasAttachment: Boolean(attachment),
-    });
-    
-    if (typeof desc !== 'string' || !desc.trim()) {
-      console.warn('⚠️ [POST /reports] Skipping message with no content');
-      results.push({ error: 'No content provided', status: 400 });
+  const results = [];
+  for (const item of items) {
+    // Online and older offline clients name the text differently
+    const { message, category, description, location, content, attachment } = item;
+    const text = description || message || content;
+
+    if (typeof text !== "string" || !text.trim()) {
+      results.push({ error: "No content provided", status: 400 });
       continue;
     }
-
-    if (desc.length > MAX_DESCRIPTION_LENGTH) {
+    if (text.length > MAX_DESCRIPTION_LENGTH) {
       results.push({ error: `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters`, status: 400 });
       continue;
     }
-    
+
     try {
-      console.log('🔍 [POST /reports] Calling NLP module...');
-      const nlpData = await processTextForCrisisInfo(desc);
-      console.log('✅ [POST /reports] NLP result:', nlpData);
-      
-      // Analyze image if attachment is provided
-      let imageAnalysis = null;
-      if (attachment) {
-        console.log('🖼️  [POST /reports] Analyzing attached image with Gemini...');
-        imageAnalysis = await analyzeCrisisImage(attachment);
-        console.log('✅ [POST /reports] Image analysis result:', {
-          isCrisis: imageAnalysis.isCrisis,
-          crisisType: imageAnalysis.crisisType,
-          confidence: imageAnalysis.confidence,
-          severity: imageAnalysis.severity,
-        });
-      }
-      
-      // Combine text and image analysis
-      // Image analysis takes precedence if it has high confidence
-      let finalCrisisType = nlpData.crisisType;
-      let finalSeverity = nlpData.severity;
-      let finalConfidence = nlpData.confidence;
-      let finalLocation = nlpData.extractedLocation;
-      
-      if (imageAnalysis && imageAnalysis.isCrisis && imageAnalysis.confidence > 0.7) {
-        console.log('🎯 [POST /reports] Image analysis has high confidence, using image-based detection');
-        finalCrisisType = imageAnalysis.crisisType || finalCrisisType;
-        finalSeverity = imageAnalysis.severity || finalSeverity;
-        finalConfidence = Math.max(imageAnalysis.confidence, finalConfidence || 0);
-        // Use image location if detected and text didn't find one
-        if (imageAnalysis.location && !finalLocation) {
-          finalLocation = imageAnalysis.location;
-        }
-      } else if (imageAnalysis && imageAnalysis.isCrisis) {
-        console.log('⚖️  [POST /reports] Combining text and image analysis');
-        // Increase confidence if both text and image detect crisis
-        if (nlpData.isCrisis) {
-          finalConfidence = Math.min(1.0, (nlpData.confidence || 0.5) * 1.2);
-        }
-      }
-      
       // Reports are attributed to the authenticated user, never to an ID supplied in the body
-      const targetUserId = req.user?.id || (await getDefaultReporterUserId());
-      console.log('👤 [POST /reports] Target user ID:', targetUserId);
-      
-      console.log('💾 [POST /reports] Creating report in database...');
-      const report = await prisma.report.create({
-        data: {
-          description: desc,
-          location: finalLocation || location || '',
-          category: category || null,
-          userId: targetUserId,
-          attachment,
-          extractedLocation: finalLocation,
-          severity: finalSeverity,
-          crisisType: finalCrisisType,
-          confidence: finalConfidence,
-          latitude: nlpData.latitude,
-          longitude: nlpData.longitude,
-        },
-      });
-      console.log('✅ [POST /reports] Report created with ID:', report.id);
+      const userId = req.user?.id || (await getDefaultReporterUserId());
+      const report = await createReport({ text, category, location, attachment }, userId);
+      log.info({ reportId: report.id, crisisType: report.crisisType, severity: report.severity,
+        anonymous: !req.user, hasAttachment: Boolean(attachment) }, "report created");
       results.push(report);
-    } catch (e) {
-      console.error('❌ [POST /reports] Failed to save report:', e.message);
-      console.error('❌ [POST /reports] Stack trace:', e.stack);
-      results.push({ error: 'Failed to save report', status: 500 });
+    } catch (error) {
+      log.error({ err: error }, "failed to save report");
+      results.push({ error: "Failed to save report", status: 500 });
     }
   }
-  
-  console.log('📤 [POST /reports] Sending response with', results.length, 'result(s)');
+
   if (Array.isArray(body)) {
     // Batch: 207 tells the client to inspect per-item results
     const failed = results.some((r) => r.error);
@@ -156,12 +126,8 @@ router.post("/", optionalAuth, async (req, res) => {
   return res.status(result.error ? result.status : 201).json(result);
 });
 
-// Get all reports
-const STAFF_ROLES = ["first-responder", "admin"];
-
 router.get("/", optionalAuth, async (req, res) => {
   try {
-    console.log('📡 [GET /reports] Fetching all reports from database...');
     // Reporter identity is only visible to responders/admins
     const canSeeReporter = STAFF_ROLES.includes(req.user?.role);
     const reports = await prisma.report.findMany({
@@ -170,13 +136,12 @@ router.get("/", optionalAuth, async (req, res) => {
         : undefined,
       // Base64 images make the list huge and no list view displays them
       omit: { attachment: true },
-      orderBy: { timestamp: 'desc' }
+      orderBy: { timestamp: "desc" },
     });
-    console.log('✅ [GET /reports] Found', reports.length, 'reports');
     res.json(reports);
   } catch (error) {
-    console.error('❌ [GET /reports] Database error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch reports', details: error.message });
+    log.error({ err: error }, "failed to fetch reports");
+    res.status(500).json({ error: "Failed to fetch reports" });
   }
 });
 

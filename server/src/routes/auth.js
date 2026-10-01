@@ -2,12 +2,11 @@ import express from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { rateLimit } from "express-rate-limit";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../db.js";
 import { JWT_SECRET } from "../config.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Slow down credential stuffing / brute force against the login and register endpoints
 const credentialLimiter = rateLimit({

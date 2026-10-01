@@ -1,9 +1,11 @@
 import express from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../db.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
+import { logger } from "../logger.js";
+
+const log = logger.child({ module: "first-responders" });
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Get all first responders
 router.get("/", async (req, res) => {
@@ -16,8 +18,8 @@ router.get("/", async (req, res) => {
 
     res.json(responders);
   } catch (error) {
-    console.error('Error fetching first responders:', error);
-    res.status(500).json({ error: error.message });
+    log.error({ err: error }, 'Error fetching first responders');
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -46,8 +48,8 @@ router.get("/:id", async (req, res) => {
 
     res.json(responder);
   } catch (error) {
-    console.error('Error fetching first responder:', error);
-    res.status(500).json({ error: error.message });
+    log.error({ err: error }, 'Error fetching first responder');
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -75,7 +77,7 @@ router.post("/", authenticate, authorize("admin"), async (req, res) => {
 
     res.status(201).json(responder);
   } catch (error) {
-    console.error('Error creating first responder:', error);
+    log.error({ err: error }, 'Error creating first responder');
     
     if (error.code === 'P2002') {
       return res.status(400).json({ 
@@ -83,7 +85,7 @@ router.post("/", authenticate, authorize("admin"), async (req, res) => {
       });
     }
     
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -107,13 +109,13 @@ router.put("/:id", authenticate, authorize("admin"), async (req, res) => {
 
     res.json(responder);
   } catch (error) {
-    console.error('Error updating first responder:', error);
+    log.error({ err: error }, 'Error updating first responder');
     
     if (error.code === 'P2025') {
       return res.status(404).json({ error: "First responder not found" });
     }
     
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -135,8 +137,8 @@ router.get("/report/:reportId", async (req, res) => {
 
     res.json(report.assignedResponder);
   } catch (error) {
-    console.error('Error fetching responder for report:', error);
-    res.status(500).json({ error: error.message });
+    log.error({ err: error }, 'Error fetching responder for report');
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 

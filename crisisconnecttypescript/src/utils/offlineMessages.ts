@@ -1,5 +1,19 @@
 import { openDB } from 'idb';
 
+/** A report as stored in IndexedDB until it reaches the server. */
+export interface OfflineMessage {
+  id: number;
+  content?: string;
+  /** Text field used by older versions of the app */
+  message?: string;
+  category: string;
+  attachment?: string | null;
+  synced: boolean;
+  createdAt: string;
+}
+
+type NewOfflineMessage = Omit<OfflineMessage, 'id' | 'createdAt'>;
+
 const DB_NAME = 'crisisconnect';
 const STORE_NAME = 'messages';
 
@@ -13,14 +27,12 @@ export async function getDB() {
   });
 }
 
-export async function saveOfflineMessage(message: any) {
+export async function saveOfflineMessage(message: NewOfflineMessage) {
   const db = await getDB();
-  // If message already has synced property, use it; otherwise default to false
-  const synced = typeof message.synced === 'boolean' ? message.synced : false;
-  await db.add(STORE_NAME, { ...message, synced, createdAt: new Date().toISOString() });
+  await db.add(STORE_NAME, { ...message, createdAt: new Date().toISOString() });
 }
 
-export async function getAllMessages() {
+export async function getAllMessages(): Promise<OfflineMessage[]> {
   const db = await getDB();
   return db.getAll(STORE_NAME);
 }

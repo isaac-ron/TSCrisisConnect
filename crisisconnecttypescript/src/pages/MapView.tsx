@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Locate } from 'lucide-react';
 import LeafletMap from '../components/LeafletMap';
 import { API_BASE_URL } from '../lib/config';
-import { getCategory } from '../lib/categories';
+import { crisisTypeLabel } from '../lib/categories';
 import { SEVERITY_LEVELS, severityColor } from '../lib/severity';
 
 interface Report {
@@ -51,7 +51,7 @@ export function MapView() {
     .filter(report => report.latitude !== null && report.longitude !== null)
     .map(report => ({
       id: report.id.toString(),
-      type: report.crisisType || (report.category ? getCategory(report.category).label : 'Unknown Crisis'),
+      type: crisisTypeLabel(report.crisisType, report.category),
       urgency: report.severity || 'Medium',
       description: report.description,
       location: {

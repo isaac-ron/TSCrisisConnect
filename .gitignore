@@ -24,10 +24,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Large model files (download separately)
-Xenova/
-ml-service/CrisisTransformers/
-nlp-service/CrisisTransformers/
+# Model files: downloaded at run time
+# (server/.model-cache holds the transformers.js models used by the API server)
+server/.model-cache/
+ml-service/Xenova/
 *.onnx
 *.safetensors
 *.bin

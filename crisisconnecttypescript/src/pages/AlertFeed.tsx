@@ -5,7 +5,7 @@ import { AlertTriangle, Clock, MapPin, Info } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { FirstResponderCard } from '../ui/first-responder-card';
 import { API_BASE_URL } from '../lib/config';
-import { getCategory } from '../lib/categories';
+import { crisisTypeLabel } from '../lib/categories';
 import { severityBadgeClass, severityColor } from '../lib/severity';
 
 // Define the structure of a report to match the backend data
@@ -156,7 +156,7 @@ export function AlertFeed() {
                   </Badge>
                   {(report.crisisType || report.category) && (
                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                      {report.crisisType || getCategory(report.category).label}
+                      {crisisTypeLabel(report.crisisType, report.category)}
                     </Badge>
                   )}
                   <Badge variant="outline">
