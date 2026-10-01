@@ -5,10 +5,11 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import reportRoutes from './routes/reports.js';
-import socialMediaRoutes from './routes/social-media.js';
+import incidentRoutes from './routes/incidents.js';
+import alertRoutes from './routes/alerts.js';
 import debugRoutes from './routes/debug.js';
-import messagesRoutes from './routes/messages.js';
-import firstRespondersRoutes from './routes/first-responders.js';
+import { refreshOfficialAlerts } from './services/official-feeds.js';
+import { attachUnlinkedReports, matchRecentIncidentsToOfficialAlerts } from './services/incidents.js';
 
 const app = express();
 
@@ -28,9 +29,8 @@ app.get('/', (req, res) => res.send('CrisisConnect API is running'));
 
 app.use('/auth', authRoutes);
 app.use('/reports', reportRoutes);
-app.use('/social', socialMediaRoutes);
-app.use('/messages', messagesRoutes);
-app.use('/first-responders', firstRespondersRoutes);
+app.use('/incidents', incidentRoutes);
+app.use('/alerts', alertRoutes);
 
 if (!IS_PRODUCTION) {
   app.use('/debug', debugRoutes);
@@ -45,7 +45,19 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     corsOrigins: ALLOWED_ORIGINS,
     imageAnalysis: Boolean(process.env.GEMINI_API_KEY),
   }, 'CrisisConnect API listening');
+
+  // Background startup work: group reports created before incidents existed, then load official alerts
+  attachUnlinkedReports()
+    .then(() => refreshOfficialAlerts({ force: true }))
+    .then(() => matchRecentIncidentsToOfficialAlerts())
+    .catch((err) => logger.error({ err }, 'startup tasks failed'));
 });
+
+// Keeps official alerts current while the instance is awake (requests also refresh them when stale)
+setInterval(() => {
+  refreshOfficialAlerts().then((stored) => stored && matchRecentIncidentsToOfficialAlerts())
+    .catch((err) => logger.error({ err }, 'official alert refresh failed'));
+}, 15 * 60 * 1000).unref();
 
 server.on('error', (error) => {
   logger.fatal({ err: error }, 'server error');

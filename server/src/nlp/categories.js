@@ -1,4 +1,4 @@
-// Crisis categories: the same keys as the report form (crisisconnecttypescript/src/lib/categories.ts).
+// Crisis categories: the same keys as the report form (frontend/src/lib/categories.ts).
 // Reports store one of these keys as crisisType, which is what incident clustering groups by.
 //
 // zeroShot:     hypothesis label for the zero-shot classifier (text-only reports)

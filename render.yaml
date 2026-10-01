@@ -45,12 +45,15 @@ services:
         value: "https://crisisconnect-ml.onrender.com"
       - key: FRONTEND_URL
         value: "https://crisisconnect-frontend.onrender.com"
+      # Optional: photo analysis. Set in the Render dashboard; never commit the key
+      - key: GEMINI_API_KEY
+        sync: false
     
   # Frontend (Static Site)
   - type: web
     name: crisisconnect-frontend
     env: static
-    rootDir: crisisconnecttypescript
+    rootDir: frontend
     buildCommand: "npm ci && npm run build"
     staticPublishPath: dist
     envVars:

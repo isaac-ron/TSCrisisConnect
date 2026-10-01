@@ -14,7 +14,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-interface Alert {
+export interface MapAlert {
   id: string;
   type: string;
   urgency: string;
@@ -25,10 +25,14 @@ interface Alert {
     address: string;
   };
   timestamp: string;
+  /** Circles for community incidents, squares for official alerts */
+  shape?: 'circle' | 'square';
+  statusLabel?: string;
+  link?: { href: string; label: string };
 }
 
 interface LeafletMapProps {
-  alerts: Alert[];
+  alerts: MapAlert[];
   center?: [number, number];
   zoom?: number;
   showMyLocation?: boolean;
@@ -69,15 +73,15 @@ function LocationMarker() {
   );
 }
 
-// Circle marker colored by severity
-const createAlertIcon = (urgency: string) => {
+// Marker colored by severity
+const createAlertIcon = (urgency: string, shape: MapAlert['shape'] = 'circle') => {
   return new L.DivIcon({
     html: `
       <div style="
         background-color: ${severityColor(urgency)};
         width: 20px;
         height: 20px;
-        border-radius: 50%;
+        border-radius: ${shape === 'square' ? '3px' : '50%'};
         border: 2px solid white;
         box-shadow: 0 2px 4px rgba(0,0,0,0.3);
       "></div>
@@ -96,7 +100,6 @@ export default function LeafletMap({ alerts, center = [0, 20], zoom = 3, showMyL
         center={center}
         zoom={zoom}
         className="w-full h-full"
-        style={{ minHeight: '400px' }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -109,11 +112,12 @@ export default function LeafletMap({ alerts, center = [0, 20], zoom = 3, showMyL
           <Marker
             key={alert.id}
             position={[alert.location.lat, alert.location.lng]}
-            icon={createAlertIcon(alert.urgency)}
+            icon={createAlertIcon(alert.urgency, alert.shape)}
           >
             <Popup>
               <div className="text-sm space-y-2">
                 <div className="font-semibold text-base">{alert.type}</div>
+                {alert.statusLabel && <div className="text-xs font-medium">{alert.statusLabel}</div>}
                 <div className="text-gray-600">{alert.description}</div>
                 <div className="text-xs text-gray-500">
                   <div>📍 {alert.location.address}</div>
@@ -121,6 +125,11 @@ export default function LeafletMap({ alerts, center = [0, 20], zoom = 3, showMyL
                   <div className={`inline-block px-2 py-1 rounded text-xs mt-1 ${severityBadgeClass(alert.urgency)}`}>
                     {alert.urgency} Priority
                   </div>
+                  {alert.link && (
+                    <div className="mt-1">
+                      <a href={alert.link.href} target="_blank" rel="noopener noreferrer">{alert.link.label}</a>
+                    </div>
+                  )}
                 </div>
               </div>
             </Popup>

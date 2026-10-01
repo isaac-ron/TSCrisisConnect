@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,90 +6,93 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
 model User {
-  id       Int      @id @default(autoincrement())
-  name     String
-  email    String   @unique
-  password String
-  role     String   @default("user") // admin, first-responder, user
-  badgeId  String?  @unique
-  reports  Report[]
-  messages Message[]
+  id                Int        @id @default(autoincrement())
+  name              String
+  email             String     @unique
+  password          String
+  role              String     @default("user") // user, first-responder, admin
+  badgeId           String?    @unique
+  reports           Report[]
+  reviewedIncidents Incident[] @relation("IncidentReviewer")
 }
 
+// One person's account of an emergency. Reports about the same event are grouped into an Incident.
 model Report {
-  id                Int      @id @default(autoincrement())
+  id                Int       @id @default(autoincrement())
   description       String
   location          String?
-  status            String   @default("pending")
-  category          String?  // category chosen by the reporter, e.g. "fire", "medical"
-  timestamp         DateTime @default(now())
+  category          String?   // category chosen by the reporter, e.g. "fire", "medical"
+  timestamp         DateTime  @default(now())
   attachment        String?
-  user              User     @relation(fields: [userId], references: [id])
+  user              User      @relation(fields: [userId], references: [id])
   userId            Int
 
-  // Fields for NLP processing
-  source            String   @default("direct_report") // "direct_report" or "twitter"
-  extractedLocation String?
-  severity          String?  // e.g., "High", "Medium", "Low"
-  crisisType        String?
+  // NLP and image analysis
+  isCrisis          Boolean?  // binary model verdict; null for reports created before it was stored
+  crisisType        String?   // category key, see server/src/nlp/categories.js
+  severity          String?   // Low, Medium, High, Critical
   confidence        Float?
-  latitude          Float?
-  longitude         Float?
-  isVerified        Boolean  @default(false)
-  
-  // First responder assignment
-  assignedResponderId Int?
-  assignedResponder   FirstResponder? @relation("ResponderToReport", fields: [assignedResponderId], references: [id])
-}
-
-model Message {
-  id        Int      @id @default(autoincrement())
-  content   String
-  type      String   @default("general") // general, alert
-  timestamp DateTime @default(now())
-  sender    User     @relation(fields: [senderId], references: [id])
-  senderId  Int
-  
-  // NLP insights from ML service
-  isCrisis       Boolean? @default(false)
-  severity       String?  // "Low", "Medium", "High", "Critical"
-  crisisType     String?  // extracted crisis category
-  confidence     Float?   // ML model confidence score
-  entities       String?  // JSON string of extracted entities (locations, people, etc)
-  
-  // First responder assignment
-  assignedResponderId Int?
-  assignedResponder   FirstResponder? @relation(fields: [assignedResponderId], references: [id])
-}
-
-model SocialAlert {
-  id                Int      @id @default(autoincrement())
-  description       String
-  source            String // e.g., 'twitter', 'facebook'
-  sourceUrl         String?
-  timestamp         DateTime @default(now())
-  isVerified        Boolean  @default(false)
-
-  // NLP and Geocoding data
-  crisisType        String?  // e.g., 'earthquake', 'fire', 'flood', etc.
   extractedLocation String?
-  severity          String?
   latitude          Float?
   longitude         Float?
+  imageVerified     Boolean   @default(false) // attached photo independently classified as a crisis
+
+  incident          Incident? @relation(fields: [incidentId], references: [id])
+  incidentId        Int?
+
+  @@index([incidentId])
 }
 
-model FirstResponder {
-  id          Int       @id @default(autoincrement())
-  name        String
-  badgeNumber String    @unique
-  department  String    // "Fire", "Police", "Medical", "Emergency Management"
-  phoneNumber String    // Direct contact number
-  email       String?   @unique
-  status      String    @default("available") // "available", "on-duty", "off-duty"
-  createdAt   DateTime  @default(now())
-  
-  // Relations
-  assignedMessages Message[]
-  assignedReports  Report[] @relation("ResponderToReport")
+enum ReviewStatus {
+  pending   // not yet reviewed by a responder
+  verified  // a responder confirmed it
+  dismissed // a responder judged it false, duplicate or not an emergency
+  resolved  // over
+}
+
+// Reports of the same crisis type, close in place and time. Corroboration (independent reporters,
+// photo evidence, a matching official alert) is computed from its reports; review is by responders.
+model Incident {
+  id              Int            @id @default(autoincrement())
+  crisisType      String
+  priority        String         @default("Low") // highest severity among its reports
+  latitude        Float?
+  longitude       Float?
+  locationName    String?
+  firstReportedAt DateTime       @default(now())
+  lastReportedAt  DateTime       @default(now())
+
+  reviewStatus    ReviewStatus   @default(pending)
+  reviewNote      String?
+  reviewedAt      DateTime?
+  reviewedBy      User?          @relation("IncidentReviewer", fields: [reviewedById], references: [id])
+  reviewedById    Int?
+
+  officialAlert   ExternalAlert? @relation(fields: [officialAlertId], references: [id])
+  officialAlertId Int?
+
+  reports         Report[]
+
+  @@index([crisisType, lastReportedAt])
+}
+
+// Events from official sources (USGS earthquakes, GDACS disaster alerts)
+model ExternalAlert {
+  id          Int        @id @default(autoincrement())
+  source      String     // "usgs" or "gdacs"
+  externalId  String
+  title       String
+  url         String?
+  crisisType  String     // category key
+  severity    String     // Low, Medium, High, Critical
+  latitude    Float?
+  longitude   Float?
+  eventTime   DateTime
+  fetchedAt   DateTime   @default(now())
+  incidents   Incident[]
+
+  @@unique([source, externalId])
+  @@index([eventTime])
 }

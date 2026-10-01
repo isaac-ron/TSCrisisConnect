@@ -6,6 +6,7 @@ import { logger } from "../logger.js";
 import { analyzeText } from "../nlp/disaster-pulse.js";
 import { CATEGORIES } from "../nlp/categories.js";
 import { analyzeCrisisImage } from "../services/image-crisis-detector.js";
+import { attachReportToIncident } from "../services/incidents.js";
 import { optionalAuth } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -49,6 +50,8 @@ const categoryFromDescription = (text) =>
 async function createReport({ text, category, location, attachment }, userId) {
   const nlp = await analyzeText(text, { category });
   const report = {
+    isCrisis: nlp.isCrisis,
+    imageVerified: false,
     crisisType: nlp.crisisType,
     severity: nlp.severity,
     confidence: nlp.confidence,
@@ -58,6 +61,8 @@ async function createReport({ text, category, location, attachment }, userId) {
   if (attachment) {
     const image = await analyzeCrisisImage(attachment);
     if (image.isCrisis && image.confidence > IMAGE_CONFIDENCE_THRESHOLD) {
+      report.isCrisis = true;
+      report.imageVerified = true;
       report.crisisType = category || categoryFromDescription(image.crisisType);
       report.severity = image.severity || report.severity;
       report.confidence = Math.max(image.confidence, report.confidence || 0);
@@ -68,7 +73,7 @@ async function createReport({ text, category, location, attachment }, userId) {
     }
   }
 
-  return prisma.report.create({
+  const created = await prisma.report.create({
     data: {
       ...report,
       description: text,
@@ -81,6 +86,14 @@ async function createReport({ text, category, location, attachment }, userId) {
     },
     omit: { attachment: true },
   });
+
+  try {
+    created.incidentId = await attachReportToIncident(created);
+  } catch (error) {
+    // The report is saved; attachUnlinkedReports() picks it up on the next server start
+    log.error({ err: error, reportId: created.id }, "failed to attach report to an incident");
+  }
+  return created;
 }
 
 // Accepts one report, or an array of reports synced from offline storage
@@ -107,7 +120,7 @@ router.post("/", optionalAuth, async (req, res) => {
       // Reports are attributed to the authenticated user, never to an ID supplied in the body
       const userId = req.user?.id || (await getDefaultReporterUserId());
       const report = await createReport({ text, category, location, attachment }, userId);
-      log.info({ reportId: report.id, crisisType: report.crisisType, severity: report.severity,
+      log.info({ reportId: report.id, incidentId: report.incidentId, crisisType: report.crisisType, severity: report.severity,
         anonymous: !req.user, hasAttachment: Boolean(attachment) }, "report created");
       results.push(report);
     } catch (error) {

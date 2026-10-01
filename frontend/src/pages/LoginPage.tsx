@@ -166,7 +166,7 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
               <CardTitle className="flex items-center gap-2 text-base uppercase tracking-widest text-muted-foreground">
                 <Sparkles className="w-4 h-4" /> What you get
               </CardTitle>
-              <CardDescription className="space-y-4">
+              <div className="text-muted-foreground text-sm space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-destructive/10 text-destructive p-2">
                     <HeartPulse className="w-5 h-5" />
@@ -186,7 +186,7 @@ export function LoginPage({ onPublicLogin, onResponderLogin, onExploreGuest, ini
                     <p className="text-sm text-muted-foreground">Access the operational dashboard with triage queues, situational intelligence, and team coordination tools.</p>
                   </div>
                 </div>
-              </CardDescription>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid gap-3">

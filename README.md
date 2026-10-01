@@ -1,221 +1,92 @@
-# CrisisConnect 
-
 <div align="center">
-  <img src="src/assets/crisisconnect-high-resolution-logo-transparent.png" alt="CrisisConnect Logo" width="200"/>
-  
-  **AI-Powered Alerts. Real People. Real Safety.**
-  
-  Stay informed, share updates, and support each other — even when networks go down.
+  <img src="frontend/src/assets/crisisconnect-high-resolution-logo-transparent.png" alt="CrisisConnect" width="320"/>
+
+  **Community crisis reporting with ML triage and corroboration-based verification.**
 </div>
 
-## 🚨 About CrisisConnect
+CrisisConnect lets people report emergencies from their phone (even offline), groups reports about the same event into incidents, and gives responders a triage queue. Machine learning sorts and prioritizes reports; it does not decide what is true. Trust comes from **corroboration**: independent reporters agreeing, a photo that shows a crisis, or a matching alert from an official source, and finally a responder's review.
 
-CrisisConnect is a modern, resilient communication platform designed to keep communities connected during emergencies and crisis situations. Built with React and TypeScript, it provides a robust interface for emergency messaging, alert distribution, and community coordination when traditional communication networks may be compromised.
+<p align="center">
+  <img src="docs/screenshots/alerts.png" alt="Public alert feed" width="230"/>
+  <img src="docs/screenshots/dashboard.png" alt="Responder review queue" width="230"/>
+  <img src="docs/screenshots/map.png" alt="Incident map" width="230"/>
+</p>
 
-### Key Features
+## How it works
 
-- **🆘 Emergency Messaging**: Send critical emergency messages with priority routing
-- **📡 Offline Mode**: Continue operating even when internet connectivity is limited
-- **🗺️ Interactive Map View**: Visualize alerts and incidents geographically
-- **📱 Mobile-First Design**: Responsive interface optimized for mobile devices
-- **🎨 Modern UI Components**: Built with Radix UI and Tailwind CSS
-- **⚡ Real-time Alerts**: Live feed of community alerts and updates
-- **💬 Message Management**: Organized messaging system for community coordination
+1. **Report.** A resident picks a category, describes what is happening and optionally attaches a photo. Without a connection, the report is queued in IndexedDB and sent when the device is back online; the app itself is a PWA that loads offline.
+2. **Analyze.** The API server runs the text through a pipeline: a fine-tuned crisis classifier, a priority classifier, named-entity recognition for the location, and geocoding. Photos are checked with Gemini. Every stage has a fallback (zero-shot model, keyword heuristics, regex), so no report is lost when a model is unavailable.
+3. **Group.** Reports of the same type within 3 km and 6 hours form one incident. Its corroboration level counts independent reporters (all anonymous reports together count as one, so one person cannot fake a crowd), photo evidence, and official alerts from **USGS** (earthquakes) and **GDACS** (cyclones, floods, wildfires) matched by place and time.
+4. **Review.** Responders work through a queue sorted by priority and corroboration, see each reporter's track record, and verify, dismiss or resolve incidents. The public feed labels every incident honestly ("Unverified · 1 report", "Corroborated · 3 independent reporters", "Verified by responders") and hides dismissed ones.
 
-## 🛠️ Technology Stack
+## Machine learning
 
-### Core Framework
-- **React 19.1.1** - Modern React with latest features
-- **TypeScript 5.8.3** - Type-safe development
-- **Vite 7.1.2** - Fast build tool and dev server
+Two RoBERTa classifiers fine-tuned from [`CT-M1-Complete`](https://huggingface.co/crisistransformers/CT-M1-Complete) (training: [crisisconnectmodels](https://github.com/isaac-ron/crisisconnectmodels)), evaluated only on data never used for training or model selection:
 
-### UI & Styling
-- **Tailwind CSS 3.x** - Utility-first CSS framework
-- **Radix UI** - Accessible, unstyled UI components
-- **Lucide React** - Beautiful icon library
-- **Class Variance Authority** - Component variant management
+| Model | Test set | Result |
+|---|---|---|
+| [Crisis detector](https://huggingface.co/ron4444444/crisis-binary-model) | [NLP with Disaster Tweets](https://www.kaggle.com/competitions/nlp-getting-started), 6,737 tweets | 79.8% accuracy, macro F1 0.777 |
+| [Priority classifier](https://huggingface.co/ron4444444/crisis-priority-model) | [TREC Incident Streams](https://www.dcs.gla.ac.uk/~richardm/TREC_IS/), 10,210 tweets from unseen disasters | macro F1 0.416 (previous model: 0.273); urgent recall 60% (previous: 36%) |
 
-### Components Library
-- 47+ pre-built UI components including:
-  - Form controls (Button, Input, Select, Textarea)
-  - Layout components (Card, Sheet, Sidebar, Dialog)
-  - Data display (Table, Chart, Badge, Avatar)
-  - Navigation (Breadcrumb, Tabs, Pagination)
-  - Interactive elements (Tooltip, Popover, Command)
+Both are served as **int8-quantized ONNX models**: 515 MB → 130 MB each, with 98% / 96% agreement with full precision, so the ML service runs in ~370 MB on a free 512 MB instance. Details, including what didn't work, are in [ml-service/README.md](ml-service/README.md).
 
-## 🚀 Getting Started
+## Architecture
 
-### Prerequisites
-
-- **Node.js 18+** 
-- **npm** or **yarn**
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/isaac-ron/TSCrisisConnect.git
-   cd TSCrisisConnect/crisisconnecttypescript
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure Google Maps API (Optional)**
-   ```bash
-   # Create .env file and add your Google Maps API key
-   echo "VITE_GOOGLE_MAPS_API_KEY=your_api_key_here" > .env
-   ```
-   
-   To get a Google Maps API key:
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project or select existing one
-   - Enable the **Maps JavaScript API**
-   - Create credentials (API Key)
-   - Restrict the API key to your domain for security
-
-4. **Start development server**
-   ```bash
-   npm run dev
-   ```
-
-5. **Open your browser**
-   Navigate to `http://localhost:5173`
-
-### Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start development server with hot reload |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build locally |
-| `npm run lint` | Run ESLint for code quality |
-
-## 📱 Application Structure
-
-### Pages
-- **HomeScreen**: Main dashboard with emergency actions
-- **ComposeMessage**: Emergency message composition interface
-- **AlertFeed**: Live feed of community alerts
-- **MapView**: Geographic visualization of incidents
-- **Messages**: Message management and history
-- **BottomNavigation**: Mobile navigation component
-
-### Key Components
 ```
-src/
-├── pages/           # Main application pages
-├── ui/              # Reusable UI components (47 components)
-├── hooks/           # Custom React hooks
-├── assets/          # Images, logos, and static assets
-└── index.css        # Global styles and Tailwind configuration
+frontend/      React + TypeScript PWA (Vite, Tailwind, Leaflet)
+     │  REST
+server/        Node.js + Express API, PostgreSQL via Prisma
+     │           ├─ NLP pipeline: crisis detection, category, priority, location, geocoding (Nominatim)
+     │           ├─ incident grouping, corroboration, responder review
+     │           ├─ official feeds: USGS, GDACS
+     │           └─ photo analysis: Gemini
+     │  HTTP
+ml-service/    Python FastAPI, ONNX Runtime: crisis detector + priority classifier (from Hugging Face Hub)
 ```
 
-## 🎨 Design System
+## Running locally
 
-### Color Palette
-- **Primary**: Deep navy (`hsl(222.2, 84%, 4.9%)`)
-- **Emergency**: Bright red (`hsl(0, 100%, 53%)`)
-- **Secondary**: Light gray (`hsl(210, 40%, 96%)`)
-- **Muted**: Subtle gray (`hsl(215.4, 16.3%, 46.9%)`)
+Requires Node.js 20+, Python 3.12, and PostgreSQL.
 
-### Typography
-- **Font**: Inter (Google Fonts)
-- **Weights**: 300, 400, 500, 600, 700
-
-## 🔧 Development
-
-### Code Quality
-- **ESLint** configuration for TypeScript and React
-- **Type-safe** development with strict TypeScript settings
-- **Component-based** architecture with reusable UI components
-
-### Styling Approach
-- **Tailwind CSS** for utility-first styling
-- **CSS Custom Properties** for theme variables
-- **Component variants** using Class Variance Authority
-- **Responsive design** with mobile-first approach
-
-### Build Configuration
-- **Vite** for fast development and optimized production builds
-- **TypeScript** compilation with strict mode
-- **PostCSS** for CSS processing
-- **Tree-shaking** for minimal bundle size
-
-## 📦 Dependencies
-
-### Core Dependencies
-```json
-{
-  "react": "^19.1.1",
-  "react-dom": "^19.1.1",
-  "@radix-ui/react-*": "Latest stable versions",
-  "lucide-react": "Latest",
-  "tailwindcss": "^3.x",
-  "class-variance-authority": "Latest"
-}
-```
-
-### Development Dependencies
-- TypeScript & React type definitions
-- ESLint with React and TypeScript plugins
-- Vite with React plugin
-- PostCSS and Tailwind CSS
-
-## 🚀 Deployment
-
-### Build for Production
 ```bash
-npm run build
+# API
+cd server
+cp .env.example .env            # set DATABASE_URL and JWT_SECRET; the rest is optional
+npm ci
+npx prisma migrate deploy
+SEED_ADMIN_PASSWORD=choose-one npm run seed:users   # demo users, a responder (FR001 / emergency123) and an admin
+npm run dev                     # http://localhost:3000
+
+# ML service (optional: without it the API falls back to heuristics)
+cd ml-service
+pip install -r requirements.txt
+python app.py                   # http://localhost:8000/docs
+
+# Frontend
+cd frontend
+npm ci
+npm run dev                     # http://localhost:5173
 ```
 
-This creates a `dist/` folder with optimized assets ready for deployment.
+## Tests
 
-### Build Output
-- **Minified JavaScript bundles**
-- **Optimized CSS**
-- **Compressed assets**
-- **Source maps** for debugging
+```bash
+cd server && SEED_ADMIN_PASSWORD=... npm test   # end-to-end: auth, permissions, reports, incidents, review, feeds
+cd ml-service && pytest                          # label mapping
+cd frontend && npm run lint && npm run build
+```
 
-## 📈 Performance
+## Deployment
 
-- **Bundle Size**: ~334KB (gzipped: ~105KB)
-- **CSS Size**: ~0.91KB (gzipped: ~0.49KB)
-- **Build Time**: ~14.66s
-- **Hot Reload**: < 1s for development changes
+`render.yaml` deploys the database, API, ML service and static frontend on Render's free tier. The ML service downloads the ONNX models from Hugging Face on startup.
 
-## 🤝 Contributing
+## Limitations
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Classifying text does not verify it. The design relies on corroboration and human review for that, and labels anything unreviewed as unverified.
+- The project's own training tweets are Kenya-focused and template-like; scores on real-world benchmarks (above) are lower than on that data, and those are the numbers reported.
+- The priority model over-escalates minor local incidents ("small leak", "no injuries"); responders see it as a hint, not a decision.
+- Twitter/X is not used as a source: its API is now pay-per-read. Official feeds and direct community reports replace it.
 
-### Development Guidelines
-- Follow TypeScript best practices
-- Use existing UI components when possible
-- Maintain responsive design principles
-- Add proper type definitions
-- Update documentation for new features
+## Author
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 👥 Team
-
-- **Developer**: Isaac Ron
-- **Repository**: [TSCrisisConnect](https://github.com/isaac-ron/TSCrisisConnect)
-
-## 🆘 Support
-
-For support, please open an issue on GitHub or contact the development team.
-
----
-
-<div align="center">
-  <strong>Stay Connected. Stay Safe. Stay Informed.</strong>
-</div>
+Ron Isaac· [github.com/isaac-ron/TSCrisisConnect](https://github.com/isaac-ron/TSCrisisConnect)
