@@ -11,7 +11,8 @@ from labels import binary_result, severity_result
 # Either a local directory or a Hugging Face Hub model ID. Each must contain config.json,
 # tokenizer.json and onnx/model_quantized.onnx. Private Hub models are read with HF_TOKEN.
 BINARY_MODEL = os.getenv("BINARY_MODEL", "ron4444444/crisis-binary-model")
-SEVERITY_MODEL = os.getenv("SEVERITY_MODEL", "ron4444444/crisis-severity-model")
+# Severity is served by the TREC-IS-trained priority model (same Low/Medium/High/Critical labels)
+SEVERITY_MODEL = os.getenv("SEVERITY_MODEL", "ron4444444/crisis-priority-model")
 
 binary_classifier = None
 severity_classifier = None

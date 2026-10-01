@@ -2,12 +2,16 @@
 
     pip install -r tools/requirements.txt
     python tools/export_onnx.py            # writes onnx-export/<name>/model_quantized.onnx
+    python tools/export_onnx.py priority   # just one model
 
 Then upload each file to its model repo as onnx/model_quantized.onnx (see README).
 
 Quantization settings matter: plain dynamic int8 flipped ~30% of binary predictions
 (u8s8 overflow on CPUs without VNNI). per_channel + reduce_range brings agreement with
 the full-precision model to ~98% (binary) / ~91% (severity) on CrisisBench tweets.
+
+The priority model comes from train_crisis_models.ipynb in the crisisconnectmodels repo. The binary model is the
+original one: a retrained version scored lower on every external test set.
 """
 import os
 import sys
@@ -21,14 +25,14 @@ from huggingface_hub import snapshot_download
 from onnxruntime.quantization import QuantType, quantize_dynamic
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-MODELS = {"binary": "ron4444444/crisis-binary-model", "severity": "ron4444444/crisis-severity-model"}
+MODELS = {"binary": "ron4444444/crisis-binary-model", "priority": "ron4444444/crisis-priority-model"}
 OUT = os.path.join(os.path.dirname(__file__), "..", "onnx-export")
 # Public crisis tweets, used only to compare the full-precision and int8 models
 PARITY_DATA = (
     "https://huggingface.co/datasets/QCRI/CrisisBench-english/resolve/refs%2Fconvert%2Fparquet/"
     "informativeness/test/0000.parquet"
 )
-MIN_AGREEMENT = {"binary": 0.97, "severity": 0.88}
+MIN_AGREEMENT = {"binary": 0.97, "priority": 0.88}
 
 if onnx.__version__.startswith("1.23"):
     # onnx 1.23's infer_shapes_path sometimes writes an empty file, which the quantizer
@@ -49,7 +53,8 @@ def predict(session_path, tokenizer, texts):
 texts = pd.read_parquet(PARITY_DATA).sample(n=500, random_state=0).text.tolist()
 failed = False
 
-for name, repo in MODELS.items():
+selected = sys.argv[1:] or list(MODELS)
+for name, repo in ((n, MODELS[n]) for n in selected):
     src = snapshot_download(repo)
     out_dir = os.path.join(OUT, name)
     os.makedirs(out_dir, exist_ok=True)
